@@ -29,3 +29,8 @@ next-env.d.ts
 # Tooling scratch
 .superpowers/
 *.log
+
+# NVIDIA Kit App Template — proje içine klonlanmis ucuncu taraf depo.
+# Kendi git gecmisi var; bizim depomuza girmemeli, bizim bicimlendiricimiz
+# de ona dokunmamali.
+kit-app-template/

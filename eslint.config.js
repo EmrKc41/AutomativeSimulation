@@ -4,7 +4,18 @@ import tseslint from "typescript-eslint";
 export default tseslint.config(
   // The web app carries its own flat config (eslint-config-next); linting it
   // from here would also sweep in Turbopack build output.
-  { ignores: ["node_modules/", "coverage/", "web/", "design-system/", ".next/", ".github/"] },
+  {
+    ignores: [
+      "node_modules/",
+      "coverage/",
+      "web/",
+      "design-system/",
+      ".next/",
+      ".github/",
+      // Third-party clone that lives inside the project directory.
+      "kit-app-template/",
+    ],
+  },
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
   {

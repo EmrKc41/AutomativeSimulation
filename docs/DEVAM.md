@@ -56,38 +56,39 @@ Beklenen: motorda **162 test**, web tarafında **18 test**, hepsi geçer.
 
 ## 2. Nerede ne var
 
-| Yol                           | Ne                                                                   |
-| ----------------------------- | -------------------------------------------------------------------- |
-| `src/domain.ts`               | Tip sözleşmeleri, durum makineleri, olay sözlüğü                     |
-| `src/labels.ts`               | **Türkçe saha sözlüğü — tek kaynak.** Motor ve arayüz ortak kullanır |
-| `src/language.test.ts`        | Dil muhafızı: motoru koşturup her alarm metnini Türkçe diye doğrular |
-| `src/factory.ts`              | Ana veri: istasyonlar, malzemeler, iş emirleri, yerleşim             |
-| `src/rng.ts`                  | Tohumlu rastgelelik (mulberry32)                                     |
-| `src/state.ts`                | Çalışma zamanı durumu, olay/alarm üretimi, parti muhasebesi          |
-| `src/engine.ts`               | Tick — 9 fazlı sabit sıra                                            |
-| `src/metrics.ts`              | KPI projeksiyonu ve kısıt tespiti                                    |
-| `src/analytics.ts`            | Kanıtlı deterministik analizler (8 adet)                             |
-| `src/optimizer.ts`            | **Planlama ayrımı** — iş emri sırası ve araç sevki                   |
-| `src/optimizer-compare.ts`    | Politika karşılaştırma koşumu (aynı tohum, tek fark politika)        |
-| `src/optimizer-service.ts`    | cuOpt/çözücü adaptörü — bağlanacağı yer                              |
-| `src/optimizer-cli.ts`        | `npm run optimize` — karşılaştırmayı yazdırır, "hayır" da der        |
-| `src/hardening.test.ts`       | Faz 8 arızalarının nöbetçisi — çökme, sınırsız büyüme, çiftleme      |
-| `src/copilot.ts`              | Soru → niyet → analiz yönlendirmesi (TR + EN)                        |
-| `src/runtime.ts`              | Canlı host: play/pause/hız/adım/sıfırla                              |
-| `src/server.ts`               | REST + WebSocket                                                     |
-| `src/report/`                 | Excel çalışma kitabı + PDF vardiya raporu (ortak model)              |
-| `src/cli.ts`                  | Terminal denetleyici (`npm run scenario`)                            |
-| `src/report-cli.ts`           | Rapor üretici (`npm run report`)                                     |
-| `src/vision/`                 | Muayene adaptörü, sentetik veri seti, KITTI/COCO/sınıf dışa aktarım  |
-| `src/vision/service.ts`       | **Çıkarım servisi adaptörü** — eğitilmiş modelin bağlanacağı yer     |
-| `tao/`                        | TAO runbook'u + eğitim spec dosyaları (`README.md` önce okunmalı)    |
-| `web/`                        | Next.js komuta merkezi + 3D sahne                                    |
-| `assets/brand/`               | Marka görselleri (kaynak)                                            |
-| `scripts/prepare-brand.mjs`   | Marka görsellerini boyutlandırır (`npm run brand`)                   |
-| `assets/fonts/`               | Fira Sans TTF (PDF için, SIL OFL)                                    |
-| `docs/TERMINOLOGY.md`         | Enum ↔ Türkçe saha terimi eşlemesi ve gerekçeleri                    |
-| `docs/IMPLEMENTATION_PLAN.md` | Faz faz ne yapıldı, hangi karar niye verildi                         |
-| `SKILL_USAGE_MATRIX.md`       | Hangi NVIDIA skill'i neden kullanıldı/kullanılmadı                   |
+| Yol                               | Ne                                                                   |
+| --------------------------------- | -------------------------------------------------------------------- |
+| `src/domain.ts`                   | Tip sözleşmeleri, durum makineleri, olay sözlüğü                     |
+| `src/labels.ts`                   | **Türkçe saha sözlüğü — tek kaynak.** Motor ve arayüz ortak kullanır |
+| `src/language.test.ts`            | Dil muhafızı: motoru koşturup her alarm metnini Türkçe diye doğrular |
+| `src/factory.ts`                  | Ana veri: istasyonlar, malzemeler, iş emirleri, yerleşim             |
+| `src/rng.ts`                      | Tohumlu rastgelelik (mulberry32)                                     |
+| `src/state.ts`                    | Çalışma zamanı durumu, olay/alarm üretimi, parti muhasebesi          |
+| `src/engine.ts`                   | Tick — 9 fazlı sabit sıra                                            |
+| `src/metrics.ts`                  | KPI projeksiyonu ve kısıt tespiti                                    |
+| `src/analytics.ts`                | Kanıtlı deterministik analizler (8 adet)                             |
+| `src/optimizer.ts`                | **Planlama ayrımı** — iş emri sırası ve araç sevki                   |
+| `src/optimizer-compare.ts`        | Politika karşılaştırma koşumu (aynı tohum, tek fark politika)        |
+| `src/optimizer-service.ts`        | cuOpt/çözücü adaptörü — bağlanacağı yer                              |
+| `src/optimizer-cli.ts`            | `npm run optimize` — karşılaştırmayı yazdırır, "hayır" da der        |
+| `src/hardening.test.ts`           | Faz 8 arızalarının nöbetçisi — çökme, sınırsız büyüme, çiftleme      |
+| `src/copilot.ts`                  | Soru → niyet → analiz yönlendirmesi (TR + EN)                        |
+| `src/runtime.ts`                  | Canlı host: play/pause/hız/adım/sıfırla                              |
+| `src/server.ts`                   | REST + WebSocket                                                     |
+| `src/report/`                     | Excel çalışma kitabı + PDF vardiya raporu (ortak model)              |
+| `src/cli.ts`                      | Terminal denetleyici (`npm run scenario`)                            |
+| `src/report-cli.ts`               | Rapor üretici (`npm run report`)                                     |
+| `src/vision/`                     | Muayene adaptörü, sentetik veri seti, KITTI/COCO/sınıf dışa aktarım  |
+| `src/vision/service.ts`           | **Çıkarım servisi adaptörü** — eğitilmiş modelin bağlanacağı yer     |
+| `tao/`                            | TAO runbook'u + eğitim spec dosyaları (`README.md` önce okunmalı)    |
+| `web/`                            | Next.js komuta merkezi + 3D sahne                                    |
+| `assets/brand/`                   | Marka görselleri (kaynak)                                            |
+| `scripts/prepare-brand.mjs`       | Marka görsellerini boyutlandırır (`npm run brand`)                   |
+| `assets/fonts/`                   | Fira Sans TTF (PDF için, SIL OFL)                                    |
+| `docs/TERMINOLOGY.md`             | Enum ↔ Türkçe saha terimi eşlemesi ve gerekçeleri                    |
+| `docs/3D-DETAYLANDIRMA-PROMPT.md` | **SIRADAKİ İŞ.** Kullanıcının 3D üretim detaylandırma şartnamesi     |
+| `docs/IMPLEMENTATION_PLAN.md`     | Faz faz ne yapıldı, hangi karar niye verildi                         |
+| `SKILL_USAGE_MATRIX.md`           | Hangi NVIDIA skill'i neden kullanıldı/kullanılmadı                   |
 
 ---
 
@@ -298,3 +299,59 @@ Dört arıza **üretilip** düzeltildi (ayrıntı: `docs/IMPLEMENTATION_PLAN.md`
 
 Sağlamlığı bozacak bir değişiklik yaparsanız `npm test` içindeki
 `src/hardening.test.ts` yakalar.
+
+---
+
+## 10. Sıradaki iş — 3D üretim detaylandırma
+
+Şartname: **`docs/3D-DETAYLANDIRMA-PROMPT.md`** (kullanıcı 2026-08-29 akşamı
+verdi, ertesi gün buradan devam edilecek). Kendi 10 fazı var: tır/mal kabul →
+giriş kalite → depo → hat → istasyon operasyonları → robotlar ve operatörler →
+final montaj → final kalite/tamir → sevkiyat → dashboard entegrasyonu.
+
+### İşe başlamadan önce bilinmesi gerekenler
+
+**İyi haber — Faz 1-3 çoğunlukla var olan durumu görselleştirmek.** Motor zaten
+şunları modelliyor ve olay üretiyor: `RECEIVING-DOCK`, `QUARANTINE`,
+`RAW-STOCK-A` konumları, `MATERIAL_RECEIVED` / `MATERIAL_ACCEPTED` /
+`MATERIAL_QUARANTINED` olayları, partiye göre girdi kalite reddi
+(`incomingRejectRate`). Yani tır/IQC/depo sahnesi **yeni motor mantığı
+istemiyor**, var olan olayları 3D'de göstermek yeterli. Burası hızlı ilerler.
+
+**Zor haber — istasyon sayısı.** Şartname ~21 operasyon istiyor (Body Shop,
+Press, Robotic Welding, Painting, Battery Installation, Glass, Wheel, Seat…).
+Motorun rotası şu an **5 istasyon**:
+
+```ts
+route: ["PRESS-01", "WELD-04", "PAINT-01", "ASSEMBLY-01", "FINAL-QC"];
+```
+
+Bu bir 3D işi değil, **motor ana verisi işi**. Şartname de bunu kabul ediyor:
+"Hepsini tek seferde yapmak zorunlu değil; mimari yeni istasyonların kolayca
+eklenmesine uygun olmalı."
+
+> **İlk yapılacak şey bu yüzden şu:** `src/factory.ts` rotasına 2-3 istasyon
+> ekleyip `npm test` çalıştır. Testler geçiyorsa mimari gerçekten esnek demektir
+> ve 21 istasyona kadar gidilebilir. Geçmiyorsa, ne kırıldığı 3D'ye tek satır
+> yazmadan önce bilinmeli. Ölçmeden genişletmek, Faz 7'de öğrendiğimiz hatanın
+> aynısı olur.
+
+**Omniverse yok.** Bu makinede `ov` klasörü, USD python paketi, `kit`/`usdcat`
+CLI — hiçbiri kurulu değil (2026-08-29 kontrol edildi). Omniverse Launcher da
+NVIDIA tarafından emekliye ayrıldı; bugünkü yol `kit-app-template`.
+
+Ayrıca **Three.js USD okumaz, glTF okur**. Omniverse yolu şudur:
+Omniverse → USD → dönüştür → glTF → sahne. Bizim ihtiyacımız 5-6 makine varlığı
+olduğu için Blender → glTF çok daha kısa. Omniverse'ün kazandırdığı şeyler
+(PhysX, RTX render, SimReady materyal metadata'sı) bu kullanımda ekranda
+görünmüyor. Kullanıcıya bu söylendi; kararı onun.
+
+**Kurulum gerektirmeyen ve görünür farkı en büyük iş:** sahnedeki kutuları
+prosedürel olarak detaylandırmak — pres gövdesi + koç kafası, kaynak robotu
+kolu, boya kabini, araç gövdesi silueti. `web/src/components/factory-scene.tsx`
+içinde `StationMesh` ve birim çizimi; yerleşim matematiği `scene-layout.ts`'de
+ayrı durduğu için sadece çizilen mesh değişir, konumlar değişmez.
+
+**Saha görünümü hazır:** `/saha` rotası (`web/src/components/shop-floor.tsx`)
+3D'yi tam ekran veriyor, andon bandı orada da var. Yeni 3D detaylar hem komuta
+merkezindeki panele hem bu sayfaya birlikte yansır.
