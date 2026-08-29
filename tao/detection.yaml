@@ -1,0 +1,63 @@
+# TAO 5.x — RT-DETR (tespit)
+#
+# 8 GB VRAM'de SIKIŞARAK çalışır. Sınıflandırma modelini bitirmeden buraya
+# geçmeyin: kutu, ancak operatöre kusurun *nerede* olduğunu göstermek
+# gerektiğinde gerekir; "var mı, hangi tip" sorusunu sınıflandırma zaten
+# cevaplıyor.
+#
+# DINO ve Deformable-DETR bu kartta çalışmaz (>=16 GB ister).
+#
+# UYARI: TAO'nun YAML anahtarları minör sürümler arasında değişiyor.
+# Çalıştırmadan önce:
+#   docker run --rm nvcr.io/nvidia/tao/tao-toolkit:5.5.0-pyt rtdetr train --help
+
+results_dir: /workspace/results/tespit
+
+dataset:
+  # COCO JSON bekliyor; `npm run dataset -- --layout=coco` bunu üretir.
+  # Eğitim ve doğrulama ayrı tohumlardan gelmeli, aynı setten bölünmemeli.
+  train_data_sources:
+    - image_dir: /workspace/datasets/tespit/images
+      json_file: /workspace/datasets/tespit/annotations_train.json
+  val_data_sources:
+    - image_dir: /workspace/datasets/tespit/images
+      json_file: /workspace/datasets/tespit/annotations_val.json
+  num_classes: 9
+  # 8 GB'de güvenli tavan. 4 denenebilir, OOM riskli.
+  batch_size: 2
+  workers: 4
+  augmentation:
+    input_width: 256
+    input_height: 256
+
+model:
+  # Daha büyük omurga bu kartta batch'i 1'e düşürür.
+  backbone: resnet_18
+  train_backbone: true
+  num_feature_levels: 3
+  # Panelde tek kusur var; 300 sorgu gereksiz bellek yer.
+  num_queries: 100
+
+train:
+  num_epochs: 60
+  checkpoint_interval: 10
+  validation_interval: 2
+  precision: fp16
+  # 8 GB'de bunsuz batch 2'de bile OOM alınabilir.
+  activation_checkpoint: true
+  optim:
+    type: AdamW
+    lr: 0.0001
+    lr_backbone: 0.00001
+    weight_decay: 0.0001
+
+evaluate:
+  checkpoint: /workspace/results/tespit/best_model.pth
+  # Bu yalnızca değerlendirme için bir başlangıç değeri. Hatta kullanılacak
+  # eşik, ayrı bir test setindeki PR eğrisinden seçilmeli.
+  conf_threshold: 0.5
+
+export:
+  checkpoint: /workspace/results/tespit/best_model.pth
+  onnx_file: /workspace/results/tespit/model.onnx
+  batch_size: 1

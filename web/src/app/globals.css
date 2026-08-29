@@ -1,0 +1,201 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Factory Command Center theme.
+ *
+ * Palette and typography come from design-system/factory-command-center/MASTER.md
+ * (ui-ux-pro-max, density 9/10). The mapping into shadcn's semantic slots is
+ * deliberate: the palette's dark slate becomes surfaces, and its status green
+ * becomes `primary`, because in an operations room the accent is reserved for
+ * action and healthy state — not decoration.
+ *
+ * The room is dark on purpose: this screen is read for hours on a wall display,
+ * next to no other light source. There is no light variant to switch to, so the
+ * dark values live on :root and are mirrored under .dark for shadcn primitives.
+ */
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-fira-sans);
+  --font-mono: var(--font-fira-code);
+  --font-heading: var(--font-fira-code);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+
+  /* Operational status colours — the only source of health colour in the UI. */
+  --color-status-ok: var(--status-ok);
+  --color-status-warn: var(--status-warn);
+  --color-status-risk: var(--status-risk);
+  --color-status-critical: var(--status-critical);
+  --color-status-logistics: var(--status-logistics);
+  --color-status-idle: var(--status-idle);
+  --color-status-blocked: var(--status-blocked);
+  --color-surface-raised: var(--surface-raised);
+  --color-grid-line: var(--grid-line);
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+:root {
+  /* Density 9/10 — a control room trades whitespace for information. */
+  --space-xs: 0.125rem;
+  --space-sm: 0.25rem;
+  --space-md: 0.5rem;
+  --space-lg: 0.75rem;
+  --space-xl: 1rem;
+  --space-2xl: 1.5rem;
+  --space-3xl: 2rem;
+  --radius: 0.375rem;
+
+  --background: oklch(0.2035 0.0286 282.5); /* logonun lacivertine hizalandi */
+  --foreground: oklch(0.9842 0.0034 247.86); /* #F8FAFC */
+  --card: oklch(0.2380 0.0330 283.5); /* logo moruna dogru bir tik */
+  --card-foreground: oklch(0.9842 0.0034 247.86);
+  --popover: oklch(0.2640 0.0355 284.0);
+  --popover-foreground: oklch(0.9842 0.0034 247.86);
+  --primary: oklch(0.7227 0.192 149.58); /* #22C55E */
+  --primary-foreground: oklch(0.1726 0.0316 155.98);
+  --secondary: oklch(0.2860 0.0360 283.0);
+  --secondary-foreground: oklch(0.9288 0.0126 255.51);
+  --muted: oklch(0.2640 0.0355 284.0);
+  --muted-foreground: oklch(0.7220 0.0300 285.0); /* arka planda 6.1:1 */
+  --accent: oklch(0.3790 0.0370 284.0);
+  --accent-foreground: oklch(0.9842 0.0034 247.86);
+  --destructive: oklch(0.6368 0.2078 25.33); /* #EF4444 */
+  --border: oklch(0.3270 0.0420 284.5);
+  --input: oklch(0.3790 0.0370 284.0);
+  --ring: oklch(0.7227 0.192 149.58);
+
+  --status-ok: oklch(0.7227 0.192 149.58); /* normal production */
+  --status-warn: oklch(0.7952 0.1617 86.05); /* capacity pressure */
+  --status-risk: oklch(0.7049 0.1867 47.6); /* quality / operational risk */
+  --status-critical: oklch(0.6368 0.2078 25.33); /* critical problem */
+  --status-logistics: oklch(0.6231 0.188 259.81); /* material movement */
+  --status-idle: oklch(0.5610 0.0380 284.0); /* no demand on the resource */
+  --status-blocked: oklch(0.6268 0.2325 303.9); /* downstream constraint */
+
+  --chart-1: oklch(0.7227 0.192 149.58);
+  --chart-2: oklch(0.6231 0.188 259.81);
+  --chart-3: oklch(0.7952 0.1617 86.05);
+  --chart-4: oklch(0.7049 0.1867 47.6);
+  --chart-5: oklch(0.6268 0.2325 303.9);
+
+  --surface-raised: oklch(0.2640 0.0355 284.0);
+  --grid-line: oklch(0.2860 0.0360 283.0);
+
+  --sidebar: oklch(0.2380 0.0330 283.5);
+  --sidebar-foreground: oklch(0.9842 0.0034 247.86);
+  --sidebar-primary: oklch(0.7227 0.192 149.58);
+  --sidebar-primary-foreground: oklch(0.1726 0.0316 155.98);
+  --sidebar-accent: oklch(0.2860 0.0360 283.0);
+  --sidebar-accent-foreground: oklch(0.9842 0.0034 247.86);
+  --sidebar-border: oklch(0.3270 0.0420 284.5);
+  --sidebar-ring: oklch(0.7227 0.192 149.58);
+}
+
+.dark {
+  color-scheme: dark;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings:
+      "tnum" 1,
+      "cv05" 1;
+  }
+
+  html {
+    @apply font-sans;
+    color-scheme: dark;
+  }
+
+  /* Numbers that change every tick must not reflow the layout around them. */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+    font-family: var(--font-mono);
+  }
+}
+
+@layer components {
+  /*
+   * The one glass surface in the design: a single restrained layer for the
+   * control bar. Used once, not everywhere — heavy frosted panels would cost
+   * legibility on a wall display for no operational benefit.
+   */
+  .panel-glass {
+    background-color: color-mix(in oklab, var(--card) 82%, transparent);
+    backdrop-filter: blur(12px);
+    border: 1px solid color-mix(in oklab, var(--border) 90%, transparent);
+  }
+}
+
+/*
+ * Live telemetry never blinks or pulses by default. Motion here means one
+ * thing: a value changed. Everything else stays still so the eye is drawn to
+ * real change rather than to decoration.
+ */
+@keyframes value-change {
+  0% {
+    background-color: color-mix(in oklab, var(--primary) 22%, transparent);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+.flash-change {
+  animation: value-change 600ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

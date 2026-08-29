@@ -1,0 +1,72 @@
+# TAO 5.x — classification_pyt
+#
+# 8 GB VRAM için ayarlandı. Bu kartta rahat çalışan yol budur; tespit
+# modellerine geçmeden önce buradan başlayın.
+#
+# UYARI: TAO'nun YAML anahtarları minör sürümler arasında değişiyor.
+# Çalıştırmadan önce mutlaka:
+#   docker run --rm nvcr.io/nvidia/tao/tao-toolkit:5.5.0-pyt \
+#     classification_pyt train --help
+# ve anahtarları kurduğunuz sürümün beklediğiyle karşılaştırın.
+
+results_dir: /workspace/results/siniflandirma
+
+dataset:
+  data:
+    # 4060'ta 224px için güvenli. OOM alırsanız 16'ya düşürün.
+    samples_per_gpu: 32
+    workers_per_gpu: 4
+    train:
+      data_prefix: /workspace/datasets/train
+    val:
+      data_prefix: /workspace/datasets/val
+    test:
+      data_prefix: /workspace/datasets/test
+  # Sınıf adları motorun kusur tipleriyle birebir aynı olmalı; adaptör
+  # bunları doğrudan eşliyor.
+  classes:
+    - OK
+    - SCRATCH
+    - DENT
+    - PAINT_DEFECT
+    - MISSING_PART
+    - WRONG_PART
+    - SURFACE_DEFORMATION
+    - MISALIGNMENT
+    - WELD_DEFECT
+
+model:
+  backbone:
+    type: resnet
+    # 8 GB için doğru boy. ResNet-50 sığar ama batch'i düşürmek gerekir.
+    depth: 18
+    pretrained: true
+  head:
+    num_classes: 9
+    loss:
+      type: CrossEntropyLoss
+      # Sentetik sette OK sınıfı %50; ağırlıklandırmadan model "hep OK"
+      # demeyi öğrenir ve doğruluk yüksek çıkar. Yanıltıcı bir yüksekliktir.
+      class_weight: [0.5, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+
+train:
+  num_epochs: 40
+  checkpoint_interval: 5
+  validation_interval: 1
+  optim:
+    type: AdamW
+    lr: 0.0003
+    weight_decay: 0.05
+    lr_scheduler: CosineAnnealingLR
+  # Karışık hassasiyet: 8 GB'de fark yaratır, doğrulukta kaybettirmez.
+  precision: fp16
+
+evaluate:
+  checkpoint: /workspace/results/siniflandirma/best_model.pth
+  topk: 1
+
+export:
+  checkpoint: /workspace/results/siniflandirma/best_model.pth
+  onnx_file: /workspace/results/siniflandirma/model.onnx
+  input_width: 224
+  input_height: 224

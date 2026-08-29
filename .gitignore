@@ -1,0 +1,31 @@
+# Dependencies
+node_modules/
+
+# Generated output
+reports/
+datasets/
+
+# Model training output. The spec files in tao/ are source and stay tracked;
+# everything TAO writes back — checkpoints, ONNX, TensorRT engines — is
+# gigabytes of regenerable binary and must never enter the repository.
+tao/results/
+*.pth
+*.onnx
+*.engine
+*.tlt
+
+# Build output
+.next/
+out/
+dist/
+coverage/
+*.tsbuildinfo
+next-env.d.ts
+
+# Local environment
+.env
+.env*.local
+
+# Tooling scratch
+.superpowers/
+*.log

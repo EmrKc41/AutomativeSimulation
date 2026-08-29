@@ -1,0 +1,35 @@
+{
+  "name": "automotive-smart-factory-digital-twin",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test --experimental-strip-types src/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "format:check": "prettier --check .",
+    "scenario": "node --experimental-strip-types src/cli.ts",
+    "server": "node --experimental-strip-types src/server.ts",
+    "web": "npm --prefix web run dev",
+    "web:build": "npm --prefix web run build",
+    "report": "node --experimental-strip-types src/report-cli.ts",
+    "dataset": "node --experimental-strip-types src/vision-cli.ts",
+    "optimize": "node --experimental-strip-types src/optimizer-cli.ts",
+    "brand": "node scripts/prepare-brand.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/pdfkit": "^0.17.6",
+    "@types/ws": "^8.18.1",
+    "eslint": "^9.0.0",
+    "prettier": "^3.0.0",
+    "sharp": "^0.35.3",
+    "typescript": "^5.0.0",
+    "typescript-eslint": "^8.0.0"
+  },
+  "dependencies": {
+    "exceljs": "^4.4.0",
+    "pdfkit": "^0.20.1",
+    "ws": "^8.21.3"
+  }
+}
