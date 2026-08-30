@@ -403,7 +403,7 @@ function receiveBatch(state: SimulationState, truck: InboundTruck): boolean {
   emit(
     state,
     quarantined ? "MATERIAL_QUARANTINED" : "MATERIAL_ACCEPTED",
-    "incoming-qc",
+    LOCATIONS.incomingQc,
     truck.batchId,
     { material: material.id, quantity: truck.quantity },
     receivedEventId,

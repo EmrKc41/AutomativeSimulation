@@ -215,6 +215,7 @@ export const PAYLOAD_TEXT: Readonly<Record<string, string>> = {
  */
 export const LOCATION_TEXT: Readonly<Record<string, string>> = {
   "RECEIVING-DOCK": "Mal Kabul",
+  "INCOMING-QC": "Giriş Kalite",
   QUARANTINE: "Karantina",
   "RAW-STOCK-A": "Ham Depo",
   "FINISHED-GOODS": "Mamul Depo",

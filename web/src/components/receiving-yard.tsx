@@ -6,7 +6,13 @@ import { useMemo } from "react";
 import type { FactoryDescriptor } from "@/lib/api";
 import type { FactoryFrame } from "@/lib/contract";
 import { ASSET_SCALE, MODEL, useModel } from "@/components/factory-models";
-import { dockPlacement, placeTrucks, type PlacedTruck } from "@/lib/scene-layout";
+import {
+  dockPlacement,
+  incomingQcPlacement,
+  placeTrucks,
+  quarantinePlacement,
+  type PlacedTruck,
+} from "@/lib/scene-layout";
 import { TONE } from "@/lib/status";
 
 /**
@@ -33,12 +39,76 @@ export function ReceivingYard({
 }) {
   const trucks = useMemo(() => placeTrucks(config, frame), [config, frame]);
   const dock = useMemo(() => dockPlacement(config), [config]);
+  const qc = useMemo(() => incomingQcPlacement(config), [config]);
+  const quarantine = useMemo(() => quarantinePlacement(config), [config]);
+
+  // Karantinadaki parti sayısı — boşsa alan da boş görünmeli.
+  const quarantined = frame.inventory.filter((balance) => balance.status === "QUARANTINE").length;
 
   return (
     <group>
       <Dock position={dock} />
+      <IncomingQc position={qc} />
+      <Quarantine position={quarantine} lots={quarantined} />
       {trucks.map((truck) => (
         <Truck key={truck.id} truck={truck} showLabels={showLabels} />
+      ))}
+    </group>
+  );
+}
+
+/**
+ * Giriş kalite kontrol.
+ *
+ * Mal kabulden çıkan malzeme doğrudan depoya gitmez; akış
+ * **mal kabul → giriş kalite → depo**. Tezgâh hattın kenarında, gelen malın
+ * yanında — girdi kalitesi kapalı bir laboratuvarda değil, sahada yapılır.
+ */
+function IncomingQc({ position }: { position: readonly [number, number, number] }) {
+  const bench = useModel(MODEL.qcBench);
+  const inspector = useModel(MODEL.operator);
+  return (
+    <group position={[position[0], 0, position[2]]}>
+      <primitive object={bench} scale={ASSET_SCALE} />
+      <primitive
+        object={inspector}
+        position={[0, 0, 1.5]}
+        rotation={[0, Math.PI, 0]}
+        scale={ASSET_SCALE}
+      />
+    </group>
+  );
+}
+
+/**
+ * Karantina alanı.
+ *
+ * Giriş kalitesinden geçemeyen parti buraya alınır — akışın bir durağı değil,
+ * kalitenin **sonucu**. Bu yüzden kapıda değil, kontrolün yanında duruyor.
+ * Boşken yalnızca zemin işareti görünüyor: dolu bir karantina, boş bir
+ * karantinadan bakışta ayırt edilebilmeli.
+ */
+function Quarantine({
+  position,
+  lots,
+}: {
+  position: readonly [number, number, number];
+  lots: number;
+}) {
+  const pallet = useModel(MODEL.pallet);
+  return (
+    <group position={[position[0], 0, position[2]]}>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.03, 0]}>
+        <planeGeometry args={[9, 7]} />
+        <meshBasicMaterial color={TONE.critical.hex} transparent opacity={0.12} />
+      </mesh>
+      {Array.from({ length: Math.min(lots, 4) }, (_, index) => (
+        <primitive
+          key={index}
+          object={index === 0 ? pallet : pallet.clone(true)}
+          position={[(index % 2) * 2 - 1, 0, Math.floor(index / 2) * 2 - 1]}
+          scale={ASSET_SCALE}
+        />
       ))}
     </group>
   );
@@ -51,9 +121,10 @@ function Dock({ position }: { position: readonly [number, number, number] }) {
   return (
     <primitive
       object={model}
-      position={[position[0], 0, position[2] + 4]}
+      position={[position[0], 0, position[2]]}
       scale={ASSET_SCALE}
-      rotation={[0, Math.PI / 2, 0]}
+      // Cephe -X'e bakıyor: mal kabul tesisin en dışı ve tırlar oradan geliyor.
+      rotation={[0, Math.PI, 0]}
     />
   );
 }

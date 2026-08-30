@@ -24,6 +24,8 @@ import type { Group, Object3D } from "three";
 
 export const MODEL = {
   truck: "/models/tir.glb",
+  carrier: "/models/oto-tasiyici.glb",
+  qcBench: "/models/iqc-masa.glb",
   dock: "/models/rampa.glb",
   pallet: "/models/palet.glb",
   rack: "/models/raf.glb",

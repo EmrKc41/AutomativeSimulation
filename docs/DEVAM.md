@@ -478,6 +478,46 @@ istasyon aralığının altıda biri kadardı. Şu an 1.05.
 - Seçim, makinenin rengini değiştirmek yerine zemine halka çiziyor; renk
   değiştirmek durum rengiyle çakışırdı.
 
+### Yerleşim düzeltildi: karantina kapıdan kalkıp kalitenin yanına gitti
+
+Akış artık dışarıdan içeri **mal kabul → giriş kalite → depo → hat**:
+
+| Konum           | Plan                       |
+| --------------- | -------------------------- |
+| Mal Kabul       | 0                          |
+| Giriş Kalite    | 11                         |
+| Karantina       | 11, hattan 20 birim uzakta |
+| Hammadde Deposu | 22                         |
+
+Karantina en dışarıdaydı ve bu, **henüz kontrol edilmemiş malın oraya
+gittiğini** ima ediyordu — sahada kimsenin yapmayacağı bir şey. Karantina
+akışın durağı değil, giriş kalitenin _sonucu_; o yüzden kontrolün yanında.
+
+Mal kabul de yeniden modellendi: havada duran bir sundurmaydı, otopark
+girişine benziyordu. Şimdi **bir bina cephesi**: iki kapı, sarı şerit, yükleme
+platformları ve yanaşma tamponları. Arkasında duvar olmadan tırın neye
+yanaştığı belli olmuyordu.
+
+Depo rafı da ince çubuklardan yatmış bir çite benziyordu; şimdi kalın dikmeli,
+çaprazlı ve **gözleri dolu** gerçek palet rafı.
+
+### Sevkiyat: araçları oto taşıyıcılar götürüyor
+
+Taşıyıcı sahneye konmuş bir nesne değil, **sevkiyatın kendisi**. Motorda
+sevkiyat zaten tam bir durum makinesine sahipti (`READY → LOADING →
+DISPATCHED → IN_TRANSIT → DELIVERED`), yani yeni motor mantığı gerekmedi.
+
+- Üstündeki araç sayısı `productIds` uzunluğu — iki araç yüklendiyse
+  taşıyıcıda iki araba var, dört değil.
+- Yükleme bitmeden yola çıkmıyor; yola çıkınca çıkışa doğru ilerliyor.
+- Teslim edilince sahneden çıkıyor, çünkü teslim edilmiş bir sevkiyat artık
+  fabrikada değildir.
+- Kapalı dorse değil **açık kafes**: bitmiş araba kapalı kasada gitmez ve
+  fabrikadan çıkanın ne olduğu uzaktan görünmeli. Alt kat iki, üst kat iki.
+
+Yedi yeni web testi bunu koruyor — özellikle "teslim edilmiş sevkiyat
+çizilmez" ve "taşıyıcı tam da yüklenen aracı taşır".
+
 ### Sırada ne var
 
 Şartnamenin Faz 2'si: giriş kalite kontrol + insan silüetleri. Motor tarafı

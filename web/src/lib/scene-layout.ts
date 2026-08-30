@@ -92,9 +92,19 @@ export interface Zone {
   readonly tone: StatusTone;
 }
 
+/**
+ * Bölgeler malzemenin izlediği sıraya göre: dışarıdan içeri
+ * **mal kabul → giriş kalite → depo → hat**.
+ *
+ * Karantina bu sıranın bir durağı değil, giriş kalitenin sonucu; o yüzden
+ * kapıda değil, kalite kontrolün yanında. Önceki yerleşimde en dışarıdaydı ve
+ * henüz kontrol edilmemiş malın oraya gittiğini ima ediyordu.
+ */
 export const ZONES: readonly Zone[] = [
-  { id: "inbound", label: "Mal Kabul & Hammadde", rect: [-6, -6, 30, 10], tone: "logistics" },
-  { id: "quarantine", label: "Karantina", rect: [-6, 22, 12, 36], tone: "risk" },
+  { id: "inbound", label: "Mal Kabul", rect: [-7, -6, 6, 8], tone: "logistics" },
+  { id: "iqc", label: "Giriş Kalite", rect: [6, -6, 17, 8], tone: "warn" },
+  { id: "quarantine", label: "Karantina", rect: [5, 14, 18, 27], tone: "risk" },
+  { id: "store", label: "Hammadde Deposu", rect: [17, -6, 30, 8], tone: "logistics" },
   { id: "line", label: "Hat 01", rect: [32, -6, 130, 8], tone: "ok" },
   { id: "rework", label: "Tamir Hücresi", rect: [90, 20, 114, 36], tone: "risk" },
   { id: "finished", label: "Bitmiş Ürün", rect: [132, -8, 150, 10], tone: "ok" },
@@ -322,5 +332,90 @@ export function placeTrucks(config: FactoryDescriptor, frame: FactoryFrame): Pla
 /** Mal kabul rampasının kendisi — sahnede sabit bir yapı. */
 export function dockPlacement(config: FactoryDescriptor): World {
   const [x, y] = planPosition(config, "RECEIVING-DOCK");
+  return toWorld(x, y);
+}
+
+// ---------------------------------------------------------------------------
+// Sevkiyat — çıkan oto taşıyıcılar
+// ---------------------------------------------------------------------------
+
+export interface PlacedCarrier {
+  readonly id: string;
+  readonly position: World;
+  readonly heading: number;
+  readonly status: FactoryFrame["shipments"][number]["status"];
+  /** Üstündeki araç sayısı — sevkiyatın gerçek yük listesi kadar. */
+  readonly loaded: number;
+  readonly capacity: number;
+  readonly destination: string;
+}
+
+/** Sevkiyat sahasında taşıyıcının yüklendiği nokta. */
+function carrierDock(config: FactoryDescriptor): World {
+  const [x, y] = planPosition(config, "SHIPPING-YARD");
+  return toWorld(x, y);
+}
+
+/** Fabrika çıkışı: taşıyıcının sahayı terk ettiği yön. */
+function carrierExit(config: FactoryDescriptor): World {
+  const [x, , z] = carrierDock(config);
+  return [x + 30, 0, z + 12];
+}
+
+/**
+ * Sevkiyatları oto taşıyıcı olarak yerleştir.
+ *
+ * Tır uydurulmuş bir nesne değil: **sevkiyatın kendisi**. Üstündeki araç sayısı
+ * `productIds` uzunluğu, yani yüklenmiş gerçek araç sayısı. Yüklenirken
+ * rampada duruyor, yola çıkınca çıkışa doğru ilerliyor, teslim edilince
+ * sahneden çıkıyor — çünkü teslim edilmiş bir sevkiyat artık fabrikada değil.
+ */
+export function placeCarriers(config: FactoryDescriptor, frame: FactoryFrame): PlacedCarrier[] {
+  const dock = carrierDock(config);
+  const exit = carrierExit(config);
+  const heading = Math.atan2(exit[0] - dock[0], exit[2] - dock[2]);
+
+  const visible = frame.shipments.filter(
+    (shipment) =>
+      shipment.status === "READY" ||
+      shipment.status === "LOADING" ||
+      shipment.status === "DISPATCHED" ||
+      shipment.status === "IN_TRANSIT",
+  );
+
+  return visible.map((shipment, index) => {
+    // Yolda olan taşıyıcı kalan süresine göre çıkışa doğru ilerliyor.
+    const leaving = shipment.status === "DISPATCHED" || shipment.status === "IN_TRANSIT";
+    const transit = Math.max(1, config.line.shiftTicks > 0 ? shipment.ticksRemaining : 1);
+    const t = leaving ? Math.max(0, Math.min(1, 1 - shipment.ticksRemaining / (transit + 1))) : 0;
+
+    // Rampada bekleyenler yan yana dizilsin, üst üste binmesin.
+    const queue = leaving ? 0 : index * 6;
+
+    return {
+      id: shipment.id,
+      position: [
+        dock[0] + (exit[0] - dock[0]) * t - queue,
+        0,
+        dock[2] + (exit[2] - dock[2]) * t,
+      ] as World,
+      heading,
+      status: shipment.status,
+      loaded: shipment.productIds.length,
+      capacity: shipment.capacity,
+      destination: shipment.destination,
+    };
+  });
+}
+
+/** Giriş kalite tezgâhının yeri. */
+export function incomingQcPlacement(config: FactoryDescriptor): World {
+  const [x, y] = planPosition(config, "INCOMING-QC");
+  return toWorld(x, y);
+}
+
+/** Karantina alanının yeri. */
+export function quarantinePlacement(config: FactoryDescriptor): World {
+  const [x, y] = planPosition(config, "QUARANTINE");
   return toWorld(x, y);
 }

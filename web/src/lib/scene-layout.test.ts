@@ -3,12 +3,16 @@ import { describe, expect, test } from "vitest";
 import type { FactoryDescriptor } from "@/lib/api";
 import type { Agv, FactoryFrame, Machine, ProductUnit, Shipment } from "@/lib/contract";
 import {
+  ZONES,
   bufferSlot,
   cameraBookmarks,
+  incomingQcPlacement,
   machineSlot,
   placeAgvs,
+  placeCarriers,
   placeUnits,
   planPosition,
+  quarantinePlacement,
   stationWorld,
   toWorld,
 } from "@/lib/scene-layout";
@@ -70,7 +74,9 @@ const config: FactoryDescriptor = {
   workOrders: [],
   locations: {
     "RECEIVING-DOCK": [0, 0],
-    "RAW-STOCK-A": [20, 0],
+    "INCOMING-QC": [11, 0],
+    QUARANTINE: [11, 20],
+    "RAW-STOCK-A": [22, 0],
     "FINISHED-GOODS": [140, 0],
     "SHIPPING-YARD": [165, 0],
   },
@@ -214,7 +220,8 @@ describe("plan-to-world mapping", () => {
 
   test("a line-side bin resolves to the station it feeds", () => {
     expect(planPosition(config, "LINE-SIDE/PAINT-01")).toEqual([80, 0]);
-    expect(planPosition(config, "RAW-STOCK-A")).toEqual([20, 0]);
+    // Depo artık 22'de: mal kabul (0) ve giriş kalite (11) ondan önce geliyor.
+    expect(planPosition(config, "RAW-STOCK-A")).toEqual([22, 0]);
   });
 
   test("an unknown location falls back to the plan origin instead of throwing", () => {
@@ -477,5 +484,103 @@ describe("scene vocabulary", () => {
       expect(TONE[tone].dot).toBe(`bg-${token}`);
       expect(TONE[tone].text).toBe(`text-${token}`);
     }
+  });
+});
+
+describe("mal kabul, giriş kalite ve sevkiyat", () => {
+  test("the inbound flow runs outside-in: receiving, then quality, then the store", () => {
+    // Sıra yerleşimin kendisi. Karantina en dışarıdayken sahne, henüz kontrol
+    // edilmemiş malın oraya gittiğini ima ediyordu — sahada kimsenin
+    // yapmayacağı bir şey.
+    const receiving = planPosition(config, "RECEIVING-DOCK")[0];
+    const qc = planPosition(config, "INCOMING-QC")[0];
+    const store = planPosition(config, "RAW-STOCK-A")[0];
+
+    expect(receiving).toBeLessThan(qc);
+    expect(qc).toBeLessThan(store);
+  });
+
+  test("quarantine sits beside incoming quality, not in front of receiving", () => {
+    const qc = planPosition(config, "INCOMING-QC");
+    const quarantine = planPosition(config, "QUARANTINE");
+    const receiving = planPosition(config, "RECEIVING-DOCK");
+
+    // Aynı hizada ama hattın dışında: karantina akışın durağı değil,
+    // kalitenin sonucu.
+    expect(quarantine[0]).toBe(qc[0]);
+    expect(quarantine[1]).toBeGreaterThan(qc[1]);
+    expect(quarantine[0]).toBeGreaterThan(receiving[0]);
+  });
+
+  test("the zones follow the same order and do not overlap the line", () => {
+    const byId = new Map(ZONES.map((zone) => [zone.id, zone]));
+    const inbound = byId.get("inbound");
+    const iqc = byId.get("iqc");
+    const store = byId.get("store");
+    const quarantine = byId.get("quarantine");
+
+    expect(inbound).toBeDefined();
+    expect(iqc).toBeDefined();
+    expect(store).toBeDefined();
+    expect(quarantine).toBeDefined();
+    // rect: [x0, y0, x1, y1] — bölgeler soldan sağa sırayla.
+    expect(inbound!.rect[2]).toBeLessThanOrEqual(iqc!.rect[0]);
+    expect(iqc!.rect[2]).toBeLessThanOrEqual(store!.rect[0]);
+    // Karantina hattın kenarından uzakta.
+    expect(quarantine!.rect[1]).toBeGreaterThan(iqc!.rect[3]);
+  });
+
+  test("the quality bench and the quarantine bay are placed where the plant says", () => {
+    expect(incomingQcPlacement(config)).toEqual(toWorld(11, 0));
+    expect(quarantinePlacement(config)).toEqual(toWorld(11, 20));
+  });
+
+  test("a carrier carries exactly the vehicles the shipment loaded", () => {
+    const placed = placeCarriers(
+      config,
+      frame({
+        shipments: [shipment({ status: "LOADING", productIds: ["CAR-1", "CAR-2", "CAR-3"] })],
+      }),
+    );
+
+    expect(placed).toHaveLength(1);
+    // Sayı uydurulmuyor: sevkiyatın kendi yük listesi.
+    expect(placed[0]!.loaded).toBe(3);
+    expect(placed[0]!.capacity).toBe(4);
+  });
+
+  test("a delivered shipment has left the plant, so it is not drawn", () => {
+    const placed = placeCarriers(
+      config,
+      frame({
+        shipments: [
+          shipment({ id: "SHP-1", status: "DELIVERED", productIds: ["CAR-1"] }),
+          shipment({ id: "SHP-2", status: "PLANNED" }),
+          shipment({ id: "SHP-3", status: "LOADING", productIds: ["CAR-2"] }),
+        ],
+      }),
+    );
+
+    // Teslim edilmiş bir sevkiyat artık fabrikada değil; planlanan henüz
+    // yüklenmemiş. Sahnede yalnızca sahada duran taşıyıcı olmalı.
+    expect(placed.map((carrier) => carrier.id)).toEqual(["SHP-3"]);
+  });
+
+  test("a loading carrier waits at the yard; a dispatched one has moved toward the exit", () => {
+    const waiting = placeCarriers(
+      config,
+      frame({ shipments: [shipment({ status: "LOADING", productIds: ["CAR-1"] })] }),
+    )[0];
+    const leaving = placeCarriers(
+      config,
+      frame({
+        shipments: [shipment({ status: "IN_TRANSIT", productIds: ["CAR-1"], ticksRemaining: 2 })],
+      }),
+    )[0];
+
+    expect(waiting).toBeDefined();
+    expect(leaving).toBeDefined();
+    // Çıkış +X yönünde: yola çıkan taşıyıcı sahadan uzaklaşmış olmalı.
+    expect(leaving!.position[0]).toBeGreaterThan(waiting!.position[0]);
   });
 });

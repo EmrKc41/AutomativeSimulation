@@ -34,8 +34,13 @@ ISTASYONLAR = [
     ("kalite", 120, 0, 0.0),
 ]
 TAMIR = ("tamir", 100, 28)
-RAMPA = ("rampa", 0, 0)
-DEPO = ("raf", 20, 0)
+# Akış dışarıdan içeri: mal kabul → giriş kalite → depo. Karantina kalitenin
+# yanında, kapıda değil. `src/factory.ts` LOCATION_POSITIONS ile aynı.
+RAMPA = (0, 0)
+IQC = (11, 0)
+KARANTINA = (11, 20)
+DEPO = (22, 0)
+SEVKIYAT = (165, 0)
 
 # Bu üç sayı `web/src/lib/scene-layout.ts` ve `factory-models.tsx` ile birebir
 # aynı olmalı; ayrı düşerlerse önizleme başka bir fabrikayı gösterir.
@@ -119,12 +124,40 @@ def sahne_kur(klasor):
     yerlestir(klasor, TAMIR[0], TAMIR[1], TAMIR[2])
     yerlestir(klasor, "operator", TAMIR[1] - 1.5, TAMIR[2] + 2.6, math.radians(180))
 
-    # Mal kabul ve depo
-    yerlestir(klasor, "rampa", RAMPA[1] + 4, RAMPA[2], math.radians(90))
-    yerlestir(klasor, "tir", RAMPA[1] + 14, RAMPA[2] + 16, math.radians(200))
-    yerlestir(klasor, "palet", RAMPA[1] + 6, RAMPA[2] + 4)
+    # Mal kabul — en dışarıda. Cephe hatta dik duruyor, tır ona yanaşıyor.
+    yerlestir(klasor, "rampa", RAMPA[0] - 2, RAMPA[1])
+    yerlestir(klasor, "tir", RAMPA[0] + 8, RAMPA[1] - 4, math.radians(180))
+    yerlestir(klasor, "palet", RAMPA[0] + 2, RAMPA[1] + 5)
+
+    # Giriş kalite — mal kabulden sonra, depodan önce
+    yerlestir(klasor, "iqc-masa", IQC[0], IQC[1])
+    yerlestir(klasor, "operator", IQC[0], IQC[1] + 3, math.radians(180))
+
+    # Karantina — kalitenin yanında, akışın durağı değil
+    for dx, dy in ((-2, 0), (2, 0), (-2, 3)):
+        yerlestir(klasor, "palet", KARANTINA[0] + dx, KARANTINA[1] + dy)
+
+    # Hammadde deposu
     for dy in (-4, 0, 4):
-        yerlestir(klasor, "raf", DEPO[1], DEPO[2] + dy, math.radians(90))
+        yerlestir(klasor, "raf", DEPO[0], DEPO[1] + dy, math.radians(90))
+
+    # Sevkiyat — bitmiş araçları alan oto taşıyıcı
+    tasiyici = yerlestir(klasor, "oto-tasiyici", SEVKIYAT[0], SEVKIYAT[1], math.radians(-20))
+    if tasiyici is not None:
+        # Kafeste dört araç: alt kat iki, üst kat iki. Sahnede bu sayı
+        # sevkiyatın gerçek yük listesinden geliyor.
+        for i, (dx, kat) in enumerate(((1.1, 0.98), (-2.6, 0.98), (1.1, 2.8), (-2.6, 2.8))):
+            arac_ = yerlestir(
+                klasor, "arac", SEVKIYAT[0], SEVKIYAT[1], math.radians(-20), olcek=0.52
+            )
+            if arac_ is None:
+                continue
+            aci = math.radians(-20)
+            arac_.location = (
+                arac_.location[0] + dx * VARLIK_OLCEK * math.cos(aci),
+                arac_.location[1] + dx * VARLIK_OLCEK * math.sin(aci),
+                kat * VARLIK_OLCEK,
+            )
 
     # Hatta araçlar — konveyör bandının üstünde, içine gömülü değil.
     # Bant yüksekliği modelde 0.68 m; varlık ölçeğiyle çarpılıyor.
@@ -165,10 +198,10 @@ def kamera_kur():
     # Tesis yaklaşık 58 birim geniş (mal kabulden sevkiyata). Kamera bunu
     # tamamen görecek kadar geride ve hattı üçte bir yükseklikten kesecek
     # kadar yukarıda.
-    bpy.ops.object.camera_add(location=(-4, -30, 17))
+    bpy.ops.object.camera_add(location=(0, -40, 24))
     kamera = bpy.context.active_object
     kamera.rotation_euler = (math.radians(62), 0, 0)
-    kamera.data.lens = 24
+    kamera.data.lens = 22
     bpy.context.scene.camera = kamera
 
 

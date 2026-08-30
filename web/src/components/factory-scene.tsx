@@ -13,6 +13,7 @@ import {
   useModel,
 } from "@/components/factory-models";
 import { ReceivingYard } from "@/components/receiving-yard";
+import { ShippingYard } from "@/components/shipping-yard";
 import type { FactoryDescriptor } from "@/lib/api";
 import type { FactoryFrame, Machine, StationConfig } from "@/lib/contract";
 import {
@@ -104,6 +105,11 @@ export function FactoryScene(props: FactorySceneProps) {
           motorun yayınladığı tır durumundan sürülüyor. */}
       <Suspense fallback={null}>
         <ReceivingYard frame={props.frame} config={props.config} showLabels={props.showLabels} />
+      </Suspense>
+      {/* Sevkiyat: bitmiş araçları alıp götüren oto taşıyıcılar. Üstündeki
+          araç sayısı sevkiyatın gerçek yük listesi kadar. */}
+      <Suspense fallback={null}>
+        <ShippingYard frame={props.frame} config={props.config} showLabels={props.showLabels} />
       </Suspense>
       <Trucks frame={props.frame} config={props.config} />
 

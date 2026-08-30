@@ -232,32 +232,48 @@ def palet(klasor):
 
 def rampa(klasor):
     """
-    Mal kabul rampası: platform, üstünde saçak, iki yanında direk.
+    Mal kabul: depo cephesi, içinde kapılar, önünde yükleme platformu.
 
-    Tırın nereye yanaşacağını belirleyen şey bu; sahnede tırın hedefi bu
-    varlığın önü oluyor.
+    İlk sürüm havada duran bir sundurmaydı ve fabrikadan çok otopark girişine
+    benziyordu. Mal kabul **bir binanın kapısıdır**: arkasında duvar olmadan
+    tırın neye yanaştığı belli olmuyor.
+
+    Cephe +Y ekseni boyunca uzanıyor, tır +X yönünden yanaşıyor.
     """
     temizle()
     parcalar = []
 
-    platform = kutu("platform", (6.0, 4.0, 1.1), konum=(0, 0, 0.55))
-    malzeme(pah(platform, 0.04), "rampa-beton", (0.24, 0.25, 0.30), puruz=0.95)
-    parcalar.append(platform)
+    # Depo cephesi — sahnedeki en büyük düz yüzey, mal kabulü bina yapan şey
+    cephe = kutu("cephe", (1.0, 16.0, 7.0), konum=(-3.5, 0, 3.5))
+    malzeme(pah(cephe, 0.06), "depo-cephe", (0.21, 0.22, 0.28), metal=0.15, puruz=0.8)
+    parcalar.append(cephe)
 
-    # Yanaşma tamponu — tırın değdiği yer
-    for y in (-1.2, 1.2):
-        tampon = kutu("tampon", (0.2, 0.5, 0.3), konum=(3.0, y, 1.0))
-        malzeme(tampon, "rampa-tampon", (0.5, 0.15, 0.12), puruz=0.85)
-        parcalar.append(tampon)
-
-    for y in (-1.8, 1.8):
-        direk = kutu("direk", (0.24, 0.24, 3.4), konum=(2.6, y, 2.8))
-        malzeme(pah(direk, 0.02), "rampa-celik", CELIK, metal=0.7, puruz=0.4)
-        parcalar.append(direk)
-
-    sacak = kutu("sacak", (6.4, 4.4, 0.2), konum=(0.2, 0, 4.6))
-    malzeme(pah(sacak, 0.03), "rampa-celik", CELIK, metal=0.7, puruz=0.45)
+    # Çatı saçağı — cepheden az taşıyor, yanaşan tırın üstünü örtüyor
+    sacak = kutu("sacak", (4.6, 16.0, 0.35), konum=(-0.8, 0, 6.85))
+    malzeme(pah(sacak, 0.04), "depo-cephe", (0.21, 0.22, 0.28), metal=0.15, puruz=0.8)
     parcalar.append(sacak)
+
+    for y in (-4.0, 4.0):
+        # Kapı boşluğu — cephede koyu dikdörtgen
+        kapi = kutu("kapi", (0.12, 4.4, 4.4), konum=(-2.95, y, 2.5))
+        malzeme(kapi, "depo-kapi", (0.07, 0.08, 0.11), puruz=0.9)
+        parcalar.append(kapi)
+
+        # Kapı üstü sarı şerit: sahada kapıyı işaretleyen şey
+        serit = kutu("serit", (0.14, 4.4, 0.22), konum=(-2.94, y, 4.82))
+        malzeme(serit, "depo-serit", SARI, puruz=0.6)
+        parcalar.append(serit)
+
+        # Yükleme platformu — tır kasası seviyesine yükseltilmiş beton
+        platform = kutu("platform", (3.4, 5.2, 1.2), konum=(-1.2, y, 0.6))
+        malzeme(pah(platform, 0.04), "rampa-beton", (0.26, 0.27, 0.32), puruz=0.95)
+        parcalar.append(platform)
+
+        # Yanaşma tamponları — tırın değdiği yer
+        for dy in (-1.9, 1.9):
+            tampon = kutu("tampon", (0.22, 0.5, 0.34), konum=(0.6, y + dy, 1.05))
+            malzeme(tampon, "rampa-tampon", (0.48, 0.15, 0.12), puruz=0.85)
+            parcalar.append(tampon)
 
     birlestir(parcalar, "Rampa")
     disa_aktar("rampa", klasor)
@@ -662,31 +678,161 @@ def konveyor(klasor):
 
 
 def raf(klasor):
-    """Depo rafı — üzerinde paletlerin durduğu çelik iskelet."""
+    """
+    Depo rafı: iki dikey çerçeve, aralarında kirişler, gözlerinde yük.
+
+    Önceki sürüm ince çubuklardan oluşuyordu ve uzaktan yatmış bir çite
+    benziyordu. Gerçek palet rafı ağırdır: kalın dikmeler, çapraz bağlantılar
+    ve dolu gözler. Boş bir raf depo gibi durmuyor.
+    """
     temizle()
     parcalar = []
 
-    for x in (-1.7, 1.7):
-        for y in (-0.6, 0.6):
-            dikme = kutu("dikme", (0.12, 0.12, 3.0), konum=(x, y, 1.5))
-            malzeme(dikme, "raf-celik", (0.45, 0.28, 0.16), metal=0.5, puruz=0.6)
+    for x in (-1.8, 1.8):
+        for y in (-0.65, 0.65):
+            dikme = kutu("dikme", (0.18, 0.18, 3.4), konum=(x, y, 1.7))
+            malzeme(pah(dikme, 0.02), "raf-celik", (0.42, 0.26, 0.14), metal=0.5, puruz=0.6)
             parcalar.append(dikme)
+        for z in (0.9, 2.3):
+            capraz = kutu("capraz", (0.1, 1.5, 0.09), konum=(x, 0, z), donme=(0.7, 0, 0))
+            malzeme(capraz, "raf-celik", (0.42, 0.26, 0.14), metal=0.5, puruz=0.6)
+            parcalar.append(capraz)
 
-    for z in (0.9, 1.9, 2.9):
-        for y in (-0.6, 0.6):
-            kiris = kutu("kiris", (3.6, 0.1, 0.16), konum=(0, y, z))
-            malzeme(kiris, "raf-celik", (0.45, 0.28, 0.16), metal=0.5, puruz=0.6)
+    for z in (1.15, 2.35, 3.3):
+        for y in (-0.65, 0.65):
+            kiris = kutu("kiris", (3.9, 0.14, 0.2), konum=(0, y, z))
+            malzeme(kiris, "raf-celik", (0.42, 0.26, 0.14), metal=0.5, puruz=0.6)
             parcalar.append(kiris)
+        tabla = kutu("tabla", (3.7, 1.35, 0.06), konum=(0, 0, z + 0.12))
+        malzeme(tabla, "raf-tabla", (0.30, 0.24, 0.16), puruz=0.9)
+        parcalar.append(tabla)
+
+    for z in (1.35, 2.55):
+        for x in (-1.0, 1.0):
+            yuk = kutu("yuk", (1.4, 1.1, 0.75), konum=(x, 0, z + 0.42))
+            malzeme(pah(yuk, 0.02), "raf-yuk", CELIK, metal=0.45, puruz=0.55)
+            parcalar.append(yuk)
 
     birlestir(parcalar, "Raf")
     disa_aktar("raf", klasor)
 
 
+def oto_tasiyici(klasor):
+    """
+    Oto taşıyıcı: çekici + açık iki katlı araç taşıma kafesi.
+
+    Kapalı dorse yanlış araç olurdu — bitmiş araba kapalı kasada değil, açık
+    kafeste gider ve fabrikadan çıkan şeyin ne olduğu uzaktan görünür. Kafes
+    boş modelleniyor; üstündeki araçları sahne koyuyor ve **sayısı sevkiyatın
+    gerçek araç sayısı** kadar oluyor.
+
+    Uzunluk ekseni +X, çekici önde.
+    """
+    temizle()
+    parcalar = []
+
+    # Çekici — tırla aynı aile, aynı renk
+    kabin = kutu("kabin", (2.3, 2.4, 2.3), konum=(3.4, 0, 1.85))
+    malzeme(pah(kabin, 0.06), "tir-kabin", SARI, metal=0.2, puruz=0.4)
+    parcalar.append(kabin)
+    cam = kutu("cam", (0.08, 2.0, 0.9), konum=(4.52, 0, 2.35))
+    malzeme(cam, "tir-cam", CAM, metal=0.1, puruz=0.15)
+    parcalar.append(cam)
+    kaput = kutu("kaput", (1.0, 2.2, 0.9), konum=(5.0, 0, 1.1))
+    malzeme(pah(kaput, 0.04), "tir-kaput", SARI, metal=0.2, puruz=0.4)
+    parcalar.append(kaput)
+
+    # Şase
+    sase = kutu("sase", (8.4, 2.1, 0.24), konum=(-1.6, 0, 0.7))
+    malzeme(pah(sase, 0.02), "tir-sase", KOYU, metal=0.4, puruz=0.5)
+    parcalar.append(sase)
+
+    # Alt kat platformu
+    alt_kat = kutu("alt-kat", (8.0, 2.3, 0.1), konum=(-1.6, 0, 0.88))
+    malzeme(pah(alt_kat, 0.02), "tasiyici-kat", CELIK, metal=0.7, puruz=0.4)
+    parcalar.append(alt_kat)
+
+    # Üst kat platformu — taşıyıcıyı taşıyıcı yapan şey
+    ust_kat = kutu("ust-kat", (7.4, 2.3, 0.1), konum=(-1.9, 0, 2.7))
+    malzeme(pah(ust_kat, 0.02), "tasiyici-kat", CELIK, metal=0.7, puruz=0.4)
+    parcalar.append(ust_kat)
+
+    # Kafes dikmeleri
+    for x in (1.9, -0.4, -2.8, -5.2):
+        for y in (-1.1, 1.1):
+            dikme = kutu("dikme", (0.14, 0.14, 1.9), konum=(x, y, 1.78))
+            malzeme(dikme, "tasiyici-kafes", CELIK, metal=0.75, puruz=0.35)
+            parcalar.append(dikme)
+
+    # Yan korkuluklar — açık kafes, kapalı duvar değil
+    for z in (1.25, 3.05):
+        for y in (-1.12, 1.12):
+            korkuluk = kutu("korkuluk", (7.8, 0.08, 0.12), konum=(-1.7, y, z))
+            malzeme(korkuluk, "tasiyici-kafes", CELIK, metal=0.75, puruz=0.35)
+            parcalar.append(korkuluk)
+
+    # Arka rampa — yüklemenin nereden yapıldığı
+    rampa_ = kutu("rampa", (1.4, 2.2, 0.08), konum=(-6.2, 0, 0.62), donme=(0, -0.22, 0))
+    malzeme(rampa_, "tasiyici-kat", CELIK, metal=0.7, puruz=0.45)
+    parcalar.append(rampa_)
+
+    # Tekerlekler
+    for x in (4.7, 2.8, -3.4, -4.6, -5.8):
+        for y in (-1.15, 1.15):
+            teker = silindir(
+                "teker", 0.55, 0.34, konum=(x, y, 0.55), donme=(math.pi / 2, 0, 0), kenar=14
+            )
+            malzeme(teker, "tir-lastik", LASTIK, puruz=0.9)
+            parcalar.append(teker)
+
+    birlestir(parcalar, "OtoTasiyici")
+    disa_aktar("oto-tasiyici", klasor)
+
+
+def kalite_masasi(klasor):
+    """
+    Giriş kalite kontrol tezgâhı.
+
+    Mal kabulden çıkan malzeme doğrudan depoya gitmez; önce burada bakılır.
+    Tezgâh, üstünde ölçü aleti, yanında numune rafı. Kapalı bir laboratuvar
+    değil — girdi kalitesi hattın kenarında, gelen malın yanında yapılır.
+    """
+    temizle()
+    parcalar = []
+
+    tezgah = kutu("tezgah", (3.2, 1.2, 0.12), konum=(0, 0, 0.92))
+    malzeme(pah(tezgah, 0.02), "iqc-tezgah", (0.34, 0.36, 0.42), metal=0.3, puruz=0.6)
+    parcalar.append(tezgah)
+    for x in (-1.4, 1.4):
+        for y in (-0.45, 0.45):
+            ayak = kutu("ayak", (0.1, 0.1, 0.92), konum=(x, y, 0.46))
+            malzeme(ayak, "iqc-celik", CELIK, metal=0.7, puruz=0.4)
+            parcalar.append(ayak)
+
+    # Ölçü kolonu ve tarama kafası — masayı "kontrol" masası yapan şey
+    kolon = kutu("kolon", (0.18, 0.18, 1.5), konum=(-1.2, 0, 1.7))
+    malzeme(pah(kolon, 0.02), "iqc-celik", CELIK, metal=0.7, puruz=0.4)
+    parcalar.append(kolon)
+    kafa = kutu("tarayici", (0.9, 0.3, 0.24), konum=(-0.7, 0, 2.3))
+    malzeme(pah(kafa, 0.03), "iqc-tarayici", KOYU, metal=0.5, puruz=0.35)
+    parcalar.append(kafa)
+
+    # Numune rafı
+    raf_ = kutu("numune-rafi", (0.9, 1.1, 0.1), konum=(1.5, 0, 1.5))
+    malzeme(raf_, "iqc-tezgah", (0.34, 0.36, 0.42), metal=0.3, puruz=0.6)
+    parcalar.append(raf_)
+
+    birlestir(parcalar, "KaliteMasasi")
+    disa_aktar("iqc-masa", klasor)
+
+
 VARLIKLAR = {
     # Faz 1 — mal kabul
     "tir": tir,
+    "oto-tasiyici": oto_tasiyici,
     "palet": palet,
     "rampa": rampa,
+    "iqc-masa": kalite_masasi,
     # Faz 3 — depo
     "raf": raf,
     # Faz 4-6 — üretim sahası

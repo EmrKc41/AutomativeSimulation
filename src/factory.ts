@@ -12,16 +12,27 @@ import type { FactoryConfig, StationConfig } from "./domain.ts";
 /** Named locations used by inventory, AGV move tasks and the 3D layout. */
 export const LOCATIONS = {
   receiving: "RECEIVING-DOCK",
+  incomingQc: "INCOMING-QC",
   quarantine: "QUARANTINE",
   rawStock: "RAW-STOCK-A",
   finishedGoods: "FINISHED-GOODS",
   shipping: "SHIPPING-YARD",
 } as const;
 
+/**
+ * Tesis yerleşimi, malzemenin gerçekten izlediği sıraya göre.
+ *
+ * Akış dışarıdan içeri: **mal kabul → giriş kalite → depo → hat**. Karantina
+ * bu akışın bir durağı değil, giriş kalitenin *sonucu*; o yüzden kapıda değil,
+ * kalite kontrolün yanında duruyor. İlk yerleşimde karantina en dışarıdaydı ve
+ * bu, henüz kontrol edilmemiş malın oraya gittiğini ima ediyordu — sahada
+ * kimsenin yapmayacağı bir şey.
+ */
 export const LOCATION_POSITIONS: Readonly<Record<string, readonly [number, number]>> = {
   [LOCATIONS.receiving]: [0, 0],
-  [LOCATIONS.quarantine]: [0, 30],
-  [LOCATIONS.rawStock]: [20, 0],
+  [LOCATIONS.incomingQc]: [11, 0],
+  [LOCATIONS.quarantine]: [11, 20],
+  [LOCATIONS.rawStock]: [22, 0],
   [LOCATIONS.finishedGoods]: [140, 0],
   [LOCATIONS.shipping]: [165, 0],
 };

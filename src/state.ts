@@ -445,7 +445,7 @@ function seedOpeningStock(state: SimulationState): void {
       quantity: openingQuantity,
       opening: true,
     });
-    emit(state, "MATERIAL_ACCEPTED", "incoming-qc", batchId, {
+    emit(state, "MATERIAL_ACCEPTED", LOCATIONS.incomingQc, batchId, {
       material: material.id,
       quantity: openingQuantity,
     });
