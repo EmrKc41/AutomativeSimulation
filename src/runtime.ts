@@ -144,6 +144,7 @@ export class SimulationRuntime {
       metrics: this.#state.metrics,
       machines: this.#state.machines,
       agvs: this.#state.agvs,
+      trucks: this.#state.trucks,
       shipments: this.#state.shipments,
       workOrders: this.#state.workOrders,
       activeProducts: this.#activeProducts(),

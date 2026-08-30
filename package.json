@@ -15,6 +15,7 @@
     "report": "node --experimental-strip-types src/report-cli.ts",
     "dataset": "node --experimental-strip-types src/vision-cli.ts",
     "optimize": "node --experimental-strip-types src/optimizer-cli.ts",
+    "models": "node tools/models/build.mjs",
     "brand": "node scripts/prepare-brand.mjs"
   },
   "devDependencies": {

@@ -13,6 +13,10 @@
 
 export type EventType =
   | "SCENARIO_APPLIED"
+  | "TRUCK_ARRIVED"
+  | "TRUCK_DOCKED"
+  | "TRUCK_UNLOADED"
+  | "TRUCK_DEPARTED"
   | "MATERIAL_RECEIVED"
   | "MATERIAL_ACCEPTED"
   | "MATERIAL_QUARANTINED"
@@ -313,6 +317,42 @@ export interface InventoryBalance {
   status: InventoryStatus;
 }
 
+/**
+ * Bir teslimatın gelişi.
+ *
+ * Tır ekrana konulmuş bir süs değil: malzemeyi getiren şeyin kendisi. Yükü
+ * boşaltılmadan stok düşmez, çünkü gerçekte de düşmez.
+ *
+ * Zamanlama bilerek şöyle: tır, teslimat saatinden **önce** yola çıkar ve
+ * boşaltmayı tam teslimat saatinde bitirir. Böylece tedarik programı
+ * değişmez — tır eklemek üretim sayılarını kaydırmaz, yalnızca zaten olan
+ * şeyin görünür hâlini verir.
+ */
+export type TruckStatus = "ARRIVING" | "DOCKED" | "UNLOADING" | "COMPLETED";
+
+export interface InboundTruck {
+  readonly id: string;
+  readonly materialId: string;
+  readonly batchId: string;
+  readonly quantity: number;
+  status: TruckStatus;
+  /** Yola çıktığı dakika. */
+  readonly dispatchedAt: number;
+  /** Boşaltmanın biteceği — yani stoğun düşeceği — dakika. */
+  readonly dueAt: number;
+  /** Mevcut aşamada kalan dakika. */
+  ticksRemaining: number;
+  /** Mevcut aşamanın toplam süresi; 3D sahne bunun üzerinden ilerler. */
+  legTicks: number;
+  /** 0..1 aşama içinde ilerleme. */
+  progress: number;
+  /** Yanaştığı rampa. Tek rampa var, ama alan sözleşmede dursun. */
+  readonly dockId: string;
+  /** Boşaltma bitene kadar null; sonra girdi kalitesinin kararı. */
+  accepted: boolean | null;
+  completedAt: number | null;
+}
+
 export interface MoveTask {
   readonly id: string;
   readonly materialId: string;
@@ -499,6 +539,7 @@ export interface SimulationResult {
   readonly machines: readonly Machine[];
   readonly inventory: readonly InventoryBalance[];
   readonly agvs: readonly Agv[];
+  readonly trucks: readonly InboundTruck[];
   readonly moveTasks: readonly MoveTask[];
   readonly shipments: readonly Shipment[];
   readonly inspections: readonly Inspection[];
@@ -567,6 +608,8 @@ export interface FactoryFrame {
   readonly metrics: FactoryMetrics;
   readonly machines: readonly Machine[];
   readonly agvs: readonly Agv[];
+  /** Yolda ve rampadaki teslimatlar. */
+  readonly trucks: readonly InboundTruck[];
   readonly shipments: readonly Shipment[];
   readonly workOrders: readonly WorkOrder[];
   /** Units on the line plus a short tail of finished ones, not the full history. */

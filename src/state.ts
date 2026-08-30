@@ -7,6 +7,7 @@ import type {
   EventType,
   FactoryConfig,
   FactoryMetrics,
+  InboundTruck,
   Inspection,
   InventoryBalance,
   LotAllocation,
@@ -61,6 +62,8 @@ export interface SimulationState {
   readonly defects: Defect[];
   readonly defectIndex: Map<string, Defect>;
   readonly inspections: Inspection[];
+  /** Yolda ve rampadaki teslimatlar. */
+  readonly trucks: InboundTruck[];
   readonly moveTasks: MoveTask[];
   readonly agvs: Agv[];
   readonly shipments: Shipment[];
@@ -82,6 +85,7 @@ export interface Counters {
   defect: number;
   inspection: number;
   moveTask: number;
+  truck: number;
   shipment: number;
   alert: number;
   batch: number;
@@ -296,6 +300,7 @@ export function createSimulation(options: SimulationOptions): SimulationState {
     defect: 0,
     inspection: 0,
     moveTask: 0,
+    truck: 0,
     shipment: 0,
     alert: 0,
     batch: 0,
@@ -372,6 +377,7 @@ export function createSimulation(options: SimulationOptions): SimulationState {
     defects: [],
     defectIndex: new Map(),
     inspections: [],
+    trucks: [],
     moveTasks: [],
     agvs,
     shipments: [],

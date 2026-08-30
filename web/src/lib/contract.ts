@@ -8,6 +8,7 @@
  */
 export type {
   Agv,
+  InboundTruck,
   Alert,
   AndonState,
   AndonStop,

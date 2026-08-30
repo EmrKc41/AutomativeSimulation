@@ -96,6 +96,10 @@ export const SEVERITY_TEXT: Record<DefectSeverity, string> = {
 /** Event names as a supervisor would read them off a board. */
 export const EVENT_TEXT: Record<EventType, string> = {
   SCENARIO_APPLIED: "Senaryo Uygulandı",
+  TRUCK_ARRIVED: "Tır Yolda",
+  TRUCK_DOCKED: "Tır Rampaya Yanaştı",
+  TRUCK_UNLOADED: "Tır Boşaltıldı",
+  TRUCK_DEPARTED: "Tır Ayrıldı",
   MATERIAL_RECEIVED: "Malzeme Girişi",
   MATERIAL_ACCEPTED: "Girdi Kalite Kabul",
   MATERIAL_QUARANTINED: "Karantinaya Alındı",

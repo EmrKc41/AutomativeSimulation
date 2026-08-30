@@ -20,7 +20,7 @@ export default tseslint.config(
   ...tseslint.configs.recommended,
   {
     // Node build scripts and CLIs legitimately use the Node globals.
-    files: ["scripts/**/*.mjs", "src/**/*-cli.ts", "src/cli.ts", "src/server.ts"],
+    files: ["scripts/**/*.mjs", "tools/**/*.mjs", "src/**/*-cli.ts", "src/cli.ts", "src/server.ts"],
     languageOptions: { globals: { console: "readonly", process: "readonly" } },
   },
   {

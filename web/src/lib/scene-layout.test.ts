@@ -182,6 +182,7 @@ function frame(overrides: Partial<FactoryFrame> = {}): FactoryFrame {
     inventory: [],
     events: [],
     eventsTotal: 0,
+    trucks: [],
     ...overrides,
   };
 }

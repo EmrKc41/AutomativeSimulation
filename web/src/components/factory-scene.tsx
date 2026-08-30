@@ -2,9 +2,10 @@
 
 import { CameraControls, Grid, Html } from "@react-three/drei";
 import { Canvas, useFrame } from "@react-three/fiber";
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { Group, Mesh, MeshBasicMaterial } from "three";
 
+import { ReceivingYard } from "@/components/receiving-yard";
 import type { FactoryDescriptor } from "@/lib/api";
 import type { FactoryFrame, Machine, StationConfig } from "@/lib/contract";
 import {
@@ -65,6 +66,11 @@ export function FactoryScene(props: FactorySceneProps) {
       <Stations {...props} />
       <Units {...props} reducedMotion={reducedMotion} />
       <Agvs frame={props.frame} config={props.config} />
+      {/* Mal kabul: rampa ve gelen tırlar. Blender'da üretilmiş modeller,
+          motorun yayınladığı tır durumundan sürülüyor. */}
+      <Suspense fallback={null}>
+        <ReceivingYard frame={props.frame} config={props.config} showLabels={props.showLabels} />
+      </Suspense>
       <Trucks frame={props.frame} config={props.config} />
 
       <BookmarkCamera

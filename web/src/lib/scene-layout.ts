@@ -1,5 +1,5 @@
 import type { FactoryDescriptor } from "@/lib/api";
-import type { FactoryFrame } from "@/lib/contract";
+import type { FactoryFrame, InboundTruck } from "@/lib/contract";
 import { PRODUCT_STATE, type StatusTone } from "@/lib/status";
 
 /**
@@ -245,4 +245,82 @@ export function placeAgvs(config: FactoryDescriptor, frame: FactoryFrame): Place
       heading: Math.atan2(to[0] - from[0], to[2] - from[2]),
     };
   });
+}
+
+// ---------------------------------------------------------------------------
+// Mal kabul — gelen tırlar
+// ---------------------------------------------------------------------------
+
+export interface PlacedTruck {
+  readonly id: string;
+  readonly position: World;
+  /** Radyan; +Z'ye bakan varlık bu açıyla döndürülür. */
+  readonly heading: number;
+  readonly status: InboundTruck["status"];
+  readonly batchId: string;
+  readonly materialId: string;
+  /** Boşaltma sırasında 0..1; sahne palet animasyonunu buna bağlar. */
+  readonly unloadProgress: number;
+  /** Girdi kalitesi henüz karar vermediyse null. */
+  readonly accepted: boolean | null;
+}
+
+/**
+ * Fabrika kapısı: tırın sahaya girdiği nokta.
+ *
+ * Mal kabul rampasının solunda ve dışında. Tır buradan rampaya doğru sürüyor,
+ * yani hareketin yönü izleyiciye "içeri geliyor" diyor.
+ */
+const GATE_OFFSET_X = -34;
+const GATE_OFFSET_Z = 16;
+
+/** Rampada tırın durduğu nokta — rampanın önü, hattın dışında. */
+function dockWorld(config: FactoryDescriptor): World {
+  const [x, y] = planPosition(config, "RECEIVING-DOCK");
+  const [wx, , wz] = toWorld(x, y);
+  return [wx, 0, wz + 7];
+}
+
+function gateWorld(config: FactoryDescriptor): World {
+  const [x, , z] = dockWorld(config);
+  return [x + GATE_OFFSET_X, 0, z + GATE_OFFSET_Z];
+}
+
+/**
+ * Tırları yerleştir.
+ *
+ * `ARRIVING` boyunca kapıdan rampaya interpolasyon, sonrasında rampada sabit.
+ * Ayrılan tır aynı yolu geri gidiyor: gelişi ve gidişi aynı güzergâh olması,
+ * izleyicinin "bu az önce gelen tır" diye bağ kurmasını sağlıyor.
+ */
+export function placeTrucks(config: FactoryDescriptor, frame: FactoryFrame): PlacedTruck[] {
+  const gate = gateWorld(config);
+  const dock = dockWorld(config);
+
+  return frame.trucks.map((truck) => {
+    const gelis = truck.status === "ARRIVING";
+    const t = gelis ? Math.max(0, Math.min(1, truck.progress)) : 1;
+    const position: World = [
+      gate[0] + (dock[0] - gate[0]) * t,
+      0,
+      gate[2] + (dock[2] - gate[2]) * t,
+    ];
+    return {
+      id: truck.id,
+      position,
+      // Rampaya yanaşmış tır hattı gösterir; yoldaki tır gittiği yöne bakar.
+      heading: Math.atan2(dock[0] - gate[0], dock[2] - gate[2]),
+      status: truck.status,
+      batchId: truck.batchId,
+      materialId: truck.materialId,
+      unloadProgress: truck.status === "UNLOADING" ? Math.max(0, Math.min(1, truck.progress)) : 0,
+      accepted: truck.accepted,
+    };
+  });
+}
+
+/** Mal kabul rampasının kendisi — sahnede sabit bir yapı. */
+export function dockPlacement(config: FactoryDescriptor): World {
+  const [x, y] = planPosition(config, "RECEIVING-DOCK");
+  return toWorld(x, y);
 }

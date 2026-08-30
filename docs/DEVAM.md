@@ -50,45 +50,49 @@ npx tsc --noEmit && npx eslint . && npx prettier --check . && npm test
 cd web && npx tsc --noEmit && npx eslint . && npm test && npm run build
 ```
 
-Beklenen: motorda **162 test**, web tarafında **18 test**, hepsi geçer.
+Beklenen: motorda **169 test**, web tarafında **18 test**, hepsi geçer.
 
 ---
 
 ## 2. Nerede ne var
 
-| Yol                               | Ne                                                                   |
-| --------------------------------- | -------------------------------------------------------------------- |
-| `src/domain.ts`                   | Tip sözleşmeleri, durum makineleri, olay sözlüğü                     |
-| `src/labels.ts`                   | **Türkçe saha sözlüğü — tek kaynak.** Motor ve arayüz ortak kullanır |
-| `src/language.test.ts`            | Dil muhafızı: motoru koşturup her alarm metnini Türkçe diye doğrular |
-| `src/factory.ts`                  | Ana veri: istasyonlar, malzemeler, iş emirleri, yerleşim             |
-| `src/rng.ts`                      | Tohumlu rastgelelik (mulberry32)                                     |
-| `src/state.ts`                    | Çalışma zamanı durumu, olay/alarm üretimi, parti muhasebesi          |
-| `src/engine.ts`                   | Tick — 9 fazlı sabit sıra                                            |
-| `src/metrics.ts`                  | KPI projeksiyonu ve kısıt tespiti                                    |
-| `src/analytics.ts`                | Kanıtlı deterministik analizler (8 adet)                             |
-| `src/optimizer.ts`                | **Planlama ayrımı** — iş emri sırası ve araç sevki                   |
-| `src/optimizer-compare.ts`        | Politika karşılaştırma koşumu (aynı tohum, tek fark politika)        |
-| `src/optimizer-service.ts`        | cuOpt/çözücü adaptörü — bağlanacağı yer                              |
-| `src/optimizer-cli.ts`            | `npm run optimize` — karşılaştırmayı yazdırır, "hayır" da der        |
-| `src/hardening.test.ts`           | Faz 8 arızalarının nöbetçisi — çökme, sınırsız büyüme, çiftleme      |
-| `src/copilot.ts`                  | Soru → niyet → analiz yönlendirmesi (TR + EN)                        |
-| `src/runtime.ts`                  | Canlı host: play/pause/hız/adım/sıfırla                              |
-| `src/server.ts`                   | REST + WebSocket                                                     |
-| `src/report/`                     | Excel çalışma kitabı + PDF vardiya raporu (ortak model)              |
-| `src/cli.ts`                      | Terminal denetleyici (`npm run scenario`)                            |
-| `src/report-cli.ts`               | Rapor üretici (`npm run report`)                                     |
-| `src/vision/`                     | Muayene adaptörü, sentetik veri seti, KITTI/COCO/sınıf dışa aktarım  |
-| `src/vision/service.ts`           | **Çıkarım servisi adaptörü** — eğitilmiş modelin bağlanacağı yer     |
-| `tao/`                            | TAO runbook'u + eğitim spec dosyaları (`README.md` önce okunmalı)    |
-| `web/`                            | Next.js komuta merkezi + 3D sahne                                    |
-| `assets/brand/`                   | Marka görselleri (kaynak)                                            |
-| `scripts/prepare-brand.mjs`       | Marka görsellerini boyutlandırır (`npm run brand`)                   |
-| `assets/fonts/`                   | Fira Sans TTF (PDF için, SIL OFL)                                    |
-| `docs/TERMINOLOGY.md`             | Enum ↔ Türkçe saha terimi eşlemesi ve gerekçeleri                    |
-| `docs/3D-DETAYLANDIRMA-PROMPT.md` | **SIRADAKİ İŞ.** Kullanıcının 3D üretim detaylandırma şartnamesi     |
-| `docs/IMPLEMENTATION_PLAN.md`     | Faz faz ne yapıldı, hangi karar niye verildi                         |
-| `SKILL_USAGE_MATRIX.md`           | Hangi NVIDIA skill'i neden kullanıldı/kullanılmadı                   |
+| Yol                                     | Ne                                                                     |
+| --------------------------------------- | ---------------------------------------------------------------------- |
+| `src/domain.ts`                         | Tip sözleşmeleri, durum makineleri, olay sözlüğü                       |
+| `src/labels.ts`                         | **Türkçe saha sözlüğü — tek kaynak.** Motor ve arayüz ortak kullanır   |
+| `src/language.test.ts`                  | Dil muhafızı: motoru koşturup her alarm metnini Türkçe diye doğrular   |
+| `src/factory.ts`                        | Ana veri: istasyonlar, malzemeler, iş emirleri, yerleşim               |
+| `src/rng.ts`                            | Tohumlu rastgelelik (mulberry32)                                       |
+| `src/state.ts`                          | Çalışma zamanı durumu, olay/alarm üretimi, parti muhasebesi            |
+| `src/engine.ts`                         | Tick — 9 fazlı sabit sıra                                              |
+| `src/metrics.ts`                        | KPI projeksiyonu ve kısıt tespiti                                      |
+| `src/analytics.ts`                      | Kanıtlı deterministik analizler (8 adet)                               |
+| `src/optimizer.ts`                      | **Planlama ayrımı** — iş emri sırası ve araç sevki                     |
+| `src/optimizer-compare.ts`              | Politika karşılaştırma koşumu (aynı tohum, tek fark politika)          |
+| `src/optimizer-service.ts`              | cuOpt/çözücü adaptörü — bağlanacağı yer                                |
+| `src/optimizer-cli.ts`                  | `npm run optimize` — karşılaştırmayı yazdırır, "hayır" da der          |
+| `src/hardening.test.ts`                 | Faz 8 arızalarının nöbetçisi — çökme, sınırsız büyüme, çiftleme        |
+| `src/copilot.ts`                        | Soru → niyet → analiz yönlendirmesi (TR + EN)                          |
+| `src/runtime.ts`                        | Canlı host: play/pause/hız/adım/sıfırla                                |
+| `src/server.ts`                         | REST + WebSocket                                                       |
+| `src/report/`                           | Excel çalışma kitabı + PDF vardiya raporu (ortak model)                |
+| `src/cli.ts`                            | Terminal denetleyici (`npm run scenario`)                              |
+| `src/report-cli.ts`                     | Rapor üretici (`npm run report`)                                       |
+| `src/vision/`                           | Muayene adaptörü, sentetik veri seti, KITTI/COCO/sınıf dışa aktarım    |
+| `src/vision/service.ts`                 | **Çıkarım servisi adaptörü** — eğitilmiş modelin bağlanacağı yer       |
+| `tao/`                                  | TAO runbook'u + eğitim spec dosyaları (`README.md` önce okunmalı)      |
+| `web/`                                  | Next.js komuta merkezi + 3D sahne                                      |
+| `assets/brand/`                         | Marka görselleri (kaynak)                                              |
+| `scripts/prepare-brand.mjs`             | Marka görsellerini boyutlandırır (`npm run brand`)                     |
+| `assets/fonts/`                         | Fira Sans TTF (PDF için, SIL OFL)                                      |
+| `docs/TERMINOLOGY.md`                   | Enum ↔ Türkçe saha terimi eşlemesi ve gerekçeleri                      |
+| `docs/3D-DETAYLANDIRMA-PROMPT.md`       | 3D üretim detaylandırma şartnamesi — fazlar buradan yürüyor            |
+| `tools/models/build_assets.py`          | **Varlık kaynağı.** Blender modelleri, ölçüleriyle birlikte kod olarak |
+| `tools/models/build.mjs`                | `npm run models` — Blender'ı bulur, `.glb` üretir                      |
+| `web/public/models/`                    | Derleme çıktısı `.glb` dosyaları (depoda; Blender gerekmez)            |
+| `web/src/components/receiving-yard.tsx` | Mal kabul sahası: rampa, tırlar, boşaltma                              |
+| `docs/IMPLEMENTATION_PLAN.md`           | Faz faz ne yapıldı, hangi karar niye verildi                           |
+| `SKILL_USAGE_MATRIX.md`                 | Hangi NVIDIA skill'i neden kullanıldı/kullanılmadı                     |
 
 ---
 
@@ -355,3 +359,72 @@ ayrı durduğu için sadece çizilen mesh değişir, konumlar değişmez.
 **Saha görünümü hazır:** `/saha` rotası (`web/src/components/shop-floor.tsx`)
 3D'yi tam ekran veriyor, andon bandı orada da var. Yeni 3D detaylar hem komuta
 merkezindeki panele hem bu sayfaya birlikte yansır.
+
+---
+
+## 11. 3D detaylandırma — Faz 1 bitti (mal kabul)
+
+### Varlık hattı kuruldu
+
+Modeller **Blender ile, betikten** üretiliyor. Kaynak
+`tools/models/build_assets.py`: her ölçü kodda yazılı, `npm run models` her
+seferinde aynı sonucu veriyor. Elle modellenmiş bir `.blend` ikili bir kutudur;
+bu dosyanın diff'i okunur.
+
+```bash
+npm run models
+```
+
+`.glb` dosyaları **depoda duruyor**, yani projeyi çalıştırmak için Blender
+gerekmiyor — yalnızca modeli değiştirecekseniz gerekiyor. Betik Blender'ı
+`BLENDER` değişkeninde, `PATH`'te ve Windows'un kurulum klasörlerinde arıyor.
+
+Şu an üç varlık var: `tir` (530 poligon), `rampa` (156), `palet` (36). Bütçe
+bilerek düşük — ayrıntı silüetten gelmeli, yoğunluktan değil.
+
+**Omniverse kullanılmadı.** Three.js USD okumuyor, glTF okuyor; Omniverse yolu
+USD → dönüştür → glTF olurdu ve araya bir dönüştürme adımı koymak bu ölçekte
+kazanç değil maliyet. Omniverse'ün asıl kazandırdıkları (PhysX, RTX render,
+SimReady materyal verisi) bu ekranda görünmüyor. Fizik veya foto-gerçekçi
+render gerektiğinde karar yeniden verilir.
+
+### Tır süs değil, teslimatı getiren şeyin kendisi
+
+Motorda `InboundTruck` var: `ARRIVING → DOCKED → UNLOADING → COMPLETED`.
+**Boşaltma bitene kadar depoya stok düşmüyor**, çünkü gerçekte de düşmüyor.
+
+Zamanlama şöyle kuruldu: tır teslimat saatinden **önce** yola çıkıyor ve
+boşaltmayı tam teslimat saatinde bitiriyor. Sonuç: **tedarik programı birebir
+korundu.** Sekiz tohum × altı senaryo karşılaştırıldı, üretim sayıları tır
+öncesiyle **aynı** çıktı.
+
+> Tek bilinçli fark: `material_shortage` senaryosunda kesinti bir teslimat geç
+> ısırıyor. 30. dakikada inen yük 22. dakikada yüklendi ve yola çıkmış bir tır,
+> tedarikçi fikrini değiştirdi diye paletlerini kaybetmez. Bu daha doğru olan
+> davranış; `src/receiving.test.ts` içinde adıyla korunuyor.
+
+### Ölçmeden genişletme yapılmadı
+
+3D'ye tek satır yazmadan önce rota genişletilebilirliği ölçüldü: 8 istasyonlu
+bir rota kuruldu, koşturuldu, **zaman defteri her makinede sağlam** çıktı,
+izlenebilirlik doğru büyüdü. Mimari 21 operasyona kadar taşır.
+
+### Bu tur bulunan iki eski kırılganlık
+
+Tır eklemesi iki testi düşürdü ve ikisi de **zaten kırılgandı**:
+
+1. `simulation.test.ts` — "duruş üretime mal olmalı" tek tohumda ölçülüyordu ve
+   taahhüt edilmiş kodda bile 8 tohumun 2'sinde ihlal ediliyordu. Ortalamaya
+   çevrildi.
+2. `optimizer.test.ts` — reddedilen politika bulgusu 2 tohumda kontrol
+   ediliyordu, oysa bulgu 4 tohumdan geliyordu. Tohum seti hizalandı ve artık
+   reddin üç gerekçesini birden koruyor.
+
+Aynı ders üçüncü kez: **tek tohum hiçbir şey kanıtlamaz.**
+
+### Sırada ne var
+
+Şartnamenin Faz 2'si: giriş kalite kontrol + insan silüetleri. Motor tarafı
+zaten hazır (`MATERIAL_ACCEPTED` / `MATERIAL_QUARANTINED` olayları var), iş
+çoğunlukla görselleştirme. Sonra Faz 3 (depo), Faz 4-5 (istasyon operasyonları
+— burada rota genişletmesi devreye girer).

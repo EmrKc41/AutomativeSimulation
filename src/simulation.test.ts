@@ -49,19 +49,32 @@ test("a station breakdown costs availability and is opened and closed as one ale
 });
 
 test("what a stop costs depends on where it lands, not only how long it lasts", () => {
-  const reference = baseline();
-  const oneStation = runScenario({ kind: "machine_failure", ticks: TICKS, seed: SEED });
-  const wholeLine = runScenario({ kind: "line_stop", ticks: TICKS, seed: SEED });
+  // Averaged over seeds, not measured on one.
+  //
+  // This used to assert on a single seed, and it passed by luck: on the same
+  // code, a single-station failure produced *more* than the healthy line on two
+  // seeds out of eight. Over 300 minutes the plant is demand-limited and a
+  // 24-minute stop can be absorbed by buffers, so "a stop costs output" is only
+  // true on average — which is what the plant manager means by it anyway.
+  const seeds = [1, 7, 42, 101, 404, 907, 1234, 5150];
+  const mean = (values: readonly number[]) =>
+    values.reduce((sum, value) => sum + value, 0) / values.length;
 
-  const oneStationLoss = reference.metrics.productionOutput - oneStation.metrics.productionOutput;
-  const wholeLineLoss = reference.metrics.productionOutput - wholeLine.metrics.productionOutput;
+  const output = (kind: "normal" | "machine_failure" | "line_stop") =>
+    seeds.map((seed) => runScenario({ kind, ticks: TICKS, seed }).metrics.productionOutput);
+  const downtime = (kind: "machine_failure" | "line_stop") =>
+    seeds.map((seed) => runScenario({ kind, ticks: TICKS, seed }).metrics.downtime);
 
-  assert.ok(oneStationLoss > 0, "a stop on the route must cost output");
+  const healthy = mean(output("normal"));
+  const oneStationLoss = healthy - mean(output("machine_failure"));
+  const wholeLineLoss = healthy - mean(output("line_stop"));
+
+  assert.ok(oneStationLoss > 0, `a stop on the route must cost output, lost ${oneStationLoss}`);
   assert.ok(
     wholeLineLoss > oneStationLoss,
-    "stopping every station must cost more than stopping one of them",
+    `stopping every station must cost more: ${wholeLineLoss} vs ${oneStationLoss}`,
   );
-  assert.ok(wholeLine.metrics.downtime > oneStation.metrics.downtime * 3);
+  assert.ok(mean(downtime("line_stop")) > mean(downtime("machine_failure")) * 3);
 });
 
 test("supply reduction starves the line and is reported as a material shortage", () => {

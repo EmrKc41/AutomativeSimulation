@@ -300,24 +300,33 @@ test("a scenario with no lateness to remove is left completely alone", () => {
 });
 
 test("the rejected policy is still measurably worse, so the record stands", () => {
-  // If this ever passes the other way round, the finding written up in the
-  // implementation plan has expired and needs redoing rather than quoting.
-  let delta = 0;
+  // This test exists so the write-up expires loudly rather than being quoted
+  // after it stopped being true. It is checked on the same four seeds the
+  // finding is based on: an earlier version used two, which is a smaller
+  // sample than the claim it was guarding, and on two seeds the lateness
+  // figure genuinely points the other way.
+  let lateness = 0;
+  let worst = 0;
+  let travel = 0;
   for (const kind of scenarioKinds) {
-    for (const seed of [1, 42]) {
-      delta += compareOptimizers(
+    for (const seed of [1, 42, 907, 5150]) {
+      const result = compareOptimizers(
         new LegacyOptimizer(),
         new NearestVehicleOptimizer(),
         kind,
         600,
         seed,
-      ).delta.agvTravelMinutes;
+      );
+      lateness += result.delta.totalLatenessMinutes;
+      worst += result.delta.maxLatenessMinutes;
+      travel += result.delta.agvTravelMinutes;
     }
   }
-  assert.ok(
-    delta > 0,
-    `en yakın araç kuralı artık yolu ${delta} dk değiştiriyor; bulgu yenilenmeli`,
-  );
+
+  // All three of the reasons the policy was rejected, not just one of them.
+  assert.ok(travel > 0, `en yakın araç kuralı artık yolu ${travel} dk değiştiriyor`);
+  assert.ok(lateness > 0, `gecikme ${lateness} dk; reddedilme gerekçesi yenilenmeli`);
+  assert.ok(worst > 0, `en kötü iş emri ${worst} dk; reddedilme gerekçesi yenilenmeli`);
 });
 
 test("empty running is measured in the same unit as travel", () => {

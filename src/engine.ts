@@ -1,6 +1,7 @@
 import type {
   Defect,
   DefectSeverity,
+  InboundTruck,
   Inspection,
   Machine,
   ProductUnit,
@@ -33,7 +34,7 @@ export function tick(state: SimulationState): void {
   state.time += 1;
   applyScenarioEvents(state);
   updateMachineHealth(state);
-  receiveMaterials(state);
+  inboundLogistics(state);
   releaseWork(state);
   runIntralogistics(state);
   advanceStations(state);
@@ -63,6 +64,7 @@ export function snapshot(state: SimulationState): SimulationResult {
     machines: state.machines,
     inventory: state.inventory,
     agvs: state.agvs,
+    trucks: state.trucks,
     moveTasks: state.moveTasks,
     shipments: state.shipments,
     inspections: state.inspections,
@@ -247,42 +249,166 @@ function updateMachineHealth(state: SimulationState): void {
 }
 
 // ---------------------------------------------------------------------------
-// Phase 3 — inbound material and incoming quality control
+// Phase 3 — inbound trucks, material receipt and incoming quality control
 // ---------------------------------------------------------------------------
 
-function receiveMaterials(state: SimulationState): void {
+/**
+ * How long a delivery spends approaching, docking and unloading.
+ *
+ * These are the minutes the 3D view animates over. They are also the reason a
+ * truck is dispatched *before* its delivery is due rather than when it lands:
+ * the supply schedule is unchanged, so adding trucks moved no production
+ * number at all. A truck that shifted the plan would be a new fact about the
+ * factory smuggled in as a visual.
+ */
+const TRUCK_APPROACH_TICKS = 4;
+const TRUCK_DOCK_TICKS = 1;
+const TRUCK_UNLOAD_TICKS = 3;
+const TRUCK_LEAD_TICKS = TRUCK_APPROACH_TICKS + TRUCK_DOCK_TICKS + TRUCK_UNLOAD_TICKS;
+/** How long a finished truck stays visible so the scene can drive it away. */
+const TRUCK_DEPART_TICKS = 3;
+
+function inboundLogistics(state: SimulationState): void {
+  dispatchTrucks(state);
+  advanceTrucks(state);
+}
+
+/** Send a truck for every delivery that becomes due one lead time from now. */
+function dispatchTrucks(state: SimulationState): void {
   for (const material of state.config.materials) {
-    if (state.time % material.supplyIntervalTicks !== 0) continue;
+    const dueAt = state.time + TRUCK_LEAD_TICKS;
+    if (dueAt % material.supplyIntervalTicks !== 0) continue;
     const quantity = Math.round(material.supplyQuantity * state.supplyMultiplier);
     if (quantity <= 0) continue;
 
+    // The batch is named at dispatch, so the id on the truck in the 3D view is
+    // the id the lot keeps for the rest of its life.
     state.counters.batch += 1;
     const batchId = `${material.id}-LOT-${String(state.counters.batch).padStart(3, "0")}`;
-    const quarantined = state.rng.chance(material.incomingRejectRate);
+    state.counters.truck += 1;
+    const id = `TIR-${String(state.counters.truck).padStart(4, "0")}`;
 
-    state.inventory.push({
+    state.trucks.push({
+      id,
       materialId: material.id,
       batchId,
-      location: quarantined ? LOCATIONS.quarantine : LOCATIONS.rawStock,
       quantity,
-      receivedAt: state.time,
-      expiresAt: material.shelfLifeTicks === null ? null : state.time + material.shelfLifeTicks,
-      status: quarantined ? "QUARANTINE" : "AVAILABLE",
+      status: "ARRIVING",
+      dispatchedAt: state.time,
+      dueAt,
+      ticksRemaining: TRUCK_APPROACH_TICKS,
+      legTicks: TRUCK_APPROACH_TICKS,
+      progress: 0,
+      dockId: LOCATIONS.receiving,
+      accepted: null,
+      completedAt: null,
     });
 
-    const receivedEventId = emit(state, "MATERIAL_RECEIVED", LOCATIONS.receiving, batchId, {
+    emit(state, "TRUCK_ARRIVED", LOCATIONS.receiving, id, {
       material: material.id,
       quantity,
+      batch: batchId,
     });
-    emit(
-      state,
-      quarantined ? "MATERIAL_QUARANTINED" : "MATERIAL_ACCEPTED",
-      "incoming-qc",
-      batchId,
-      { material: material.id, quantity },
-      receivedEventId,
-    );
   }
+}
+
+function advanceTrucks(state: SimulationState): void {
+  for (const truck of state.trucks) {
+    if (truck.status === "COMPLETED") continue;
+    // A truck dispatched this very tick does not also travel this tick.
+    // Without this it arrives a minute early, which quietly moves the supply
+    // schedule — the one thing this design promised not to do.
+    if (truck.dispatchedAt === state.time) continue;
+
+    truck.ticksRemaining -= 1;
+    truck.progress = truck.legTicks <= 0 ? 1 : 1 - truck.ticksRemaining / truck.legTicks;
+    if (truck.ticksRemaining > 0) continue;
+
+    switch (truck.status) {
+      case "ARRIVING":
+        truck.status = "DOCKED";
+        truck.legTicks = TRUCK_DOCK_TICKS;
+        truck.ticksRemaining = TRUCK_DOCK_TICKS;
+        truck.progress = 0;
+        emit(state, "TRUCK_DOCKED", LOCATIONS.receiving, truck.id, { batch: truck.batchId });
+        break;
+
+      case "DOCKED":
+        truck.status = "UNLOADING";
+        truck.legTicks = TRUCK_UNLOAD_TICKS;
+        truck.ticksRemaining = TRUCK_UNLOAD_TICKS;
+        truck.progress = 0;
+        break;
+
+      case "UNLOADING":
+        // The stock lands now, not a minute earlier: nothing is in the store
+        // until it has actually come off the truck.
+        truck.accepted = receiveBatch(state, truck);
+        truck.status = "COMPLETED";
+        truck.completedAt = state.time;
+        emit(state, "TRUCK_UNLOADED", LOCATIONS.receiving, truck.id, {
+          batch: truck.batchId,
+          result: truck.accepted ? "PASS" : "FAIL",
+        });
+        break;
+
+      default:
+        break;
+    }
+  }
+
+  // Finished trucks linger briefly so the scene can drive them off, then go.
+  const before = state.trucks.length;
+  const survivors = state.trucks.filter(
+    (truck) => truck.completedAt === null || state.time - truck.completedAt <= TRUCK_DEPART_TICKS,
+  );
+  if (survivors.length !== before) {
+    for (const truck of state.trucks) {
+      if (!survivors.includes(truck)) {
+        emit(state, "TRUCK_DEPARTED", LOCATIONS.receiving, truck.id, { batch: truck.batchId });
+      }
+    }
+    state.trucks.length = 0;
+    state.trucks.push(...survivors);
+  }
+}
+
+/**
+ * The delivery lands: stock in, incoming quality decides.
+ *
+ * Returns whether the batch passed. The rule is exactly the one that was here
+ * before trucks existed — a batch is quarantined on the material's own
+ * incoming reject rate — so the same seed still quarantines the same lots.
+ */
+function receiveBatch(state: SimulationState, truck: InboundTruck): boolean {
+  const material = state.config.materials.find((entry) => entry.id === truck.materialId);
+  if (!material) return true;
+
+  const quarantined = state.rng.chance(material.incomingRejectRate);
+
+  state.inventory.push({
+    materialId: material.id,
+    batchId: truck.batchId,
+    location: quarantined ? LOCATIONS.quarantine : LOCATIONS.rawStock,
+    quantity: truck.quantity,
+    receivedAt: state.time,
+    expiresAt: material.shelfLifeTicks === null ? null : state.time + material.shelfLifeTicks,
+    status: quarantined ? "QUARANTINE" : "AVAILABLE",
+  });
+
+  const receivedEventId = emit(state, "MATERIAL_RECEIVED", LOCATIONS.receiving, truck.batchId, {
+    material: material.id,
+    quantity: truck.quantity,
+  });
+  emit(
+    state,
+    quarantined ? "MATERIAL_QUARANTINED" : "MATERIAL_ACCEPTED",
+    "incoming-qc",
+    truck.batchId,
+    { material: material.id, quantity: truck.quantity },
+    receivedEventId,
+  );
+  return !quarantined;
 }
 
 // ---------------------------------------------------------------------------
