@@ -1,10 +1,11 @@
 "use client";
 
-import { Html, useGLTF } from "@react-three/drei";
+import { Html } from "@react-three/drei";
 import { useMemo } from "react";
 
 import type { FactoryDescriptor } from "@/lib/api";
 import type { FactoryFrame } from "@/lib/contract";
+import { ASSET_SCALE, MODEL, useModel } from "@/components/factory-models";
 import { dockPlacement, placeTrucks, type PlacedTruck } from "@/lib/scene-layout";
 import { TONE } from "@/lib/status";
 
@@ -20,13 +21,6 @@ import { TONE } from "@/lib/status";
  * duruyor, yani projeyi çalıştırmak için Blender gerekmiyor — yalnızca modeli
  * değiştirecekseniz gerekiyor.
  */
-
-const MODEL_TRUCK = "/models/tir.glb";
-const MODEL_DOCK = "/models/rampa.glb";
-const MODEL_PALLET = "/models/palet.glb";
-
-// Sahne birimleri: varlıklar metre ölçeğinde modellendi, saha ondan küçük.
-const ASSET_SCALE = 0.42;
 
 export function ReceivingYard({
   frame,
@@ -51,10 +45,9 @@ export function ReceivingYard({
 }
 
 function Dock({ position }: { position: readonly [number, number, number] }) {
-  const { scene } = useGLTF(MODEL_DOCK);
   // Her rampa aynı geometriyi paylaşsın diye klonlanıyor; tek rampa var ama
   // ikincisi eklendiğinde bu satır değişmeyecek.
-  const model = useMemo(() => scene.clone(true), [scene]);
+  const model = useModel(MODEL.dock);
   return (
     <primitive
       object={model}
@@ -66,8 +59,7 @@ function Dock({ position }: { position: readonly [number, number, number] }) {
 }
 
 function Truck({ truck, showLabels }: { truck: PlacedTruck; showLabels: boolean }) {
-  const { scene } = useGLTF(MODEL_TRUCK);
-  const model = useMemo(() => scene.clone(true), [scene]);
+  const model = useModel(MODEL.truck);
 
   // Boşaltılan yük: ilerlemeye göre tırdan rampaya taşınıyor. Tek palet
   // gösteriliyor çünkü söylenen şey "boşaltılıyor", "kaç palet" değil.
@@ -95,8 +87,7 @@ function Truck({ truck, showLabels }: { truck: PlacedTruck; showLabels: boolean 
 
 /** Boşaltılan palet: dorseden rampaya doğru kayıyor. */
 function UnloadedPallet({ progress }: { progress: number }) {
-  const { scene } = useGLTF(MODEL_PALLET);
-  const model = useMemo(() => scene.clone(true), [scene]);
+  const model = useModel(MODEL.pallet);
   // Dorsenin arkasından çıkıp rampanın üstüne: yalnızca yatayda hareket,
   // çünkü forklift modellenmiş değil ve olmayan bir şeyi ima etmemeli.
   const z = -1.4 - progress * 2.2;
@@ -121,8 +112,3 @@ function truckTone(truck: PlacedTruck): "logistics" | "ok" | "critical" {
   if (truck.status !== "COMPLETED") return "logistics";
   return truck.accepted === false ? "critical" : "ok";
 }
-
-// Modeller sahne açılırken bir kez indirilsin; ilk tır geldiğinde beklenmesin.
-useGLTF.preload(MODEL_TRUCK);
-useGLTF.preload(MODEL_DOCK);
-useGLTF.preload(MODEL_PALLET);

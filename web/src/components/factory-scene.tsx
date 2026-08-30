@@ -5,6 +5,13 @@ import { Canvas, useFrame } from "@react-three/fiber";
 import { Suspense, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { Group, Mesh, MeshBasicMaterial } from "three";
 
+import {
+  ASSET_SCALE,
+  BELT_HEIGHT,
+  MODEL,
+  StationBody,
+  useModel,
+} from "@/components/factory-models";
 import { ReceivingYard } from "@/components/receiving-yard";
 import type { FactoryDescriptor } from "@/lib/api";
 import type { FactoryFrame, Machine, StationConfig } from "@/lib/contract";
@@ -31,7 +38,7 @@ import { MACHINE_STATE, TONE } from "@/lib/status";
  * it never invents a state the factory did not report.
  */
 
-const FLOOR = "#111a2b";
+const FLOOR = "#171426";
 
 export interface FactorySceneProps {
   readonly frame: FactoryFrame;
@@ -48,22 +55,49 @@ export function FactoryScene(props: FactorySceneProps) {
 
   return (
     <Canvas
-      shadows={false}
+      // Shadows earn their cost here: without them the machines float and the
+      // hall reads as a diagram. One shadow-casting light is enough — a second
+      // would double the cost for a difference nobody would name.
+      shadows
       dpr={[1, 1.75]}
-      camera={{ position: [0, 26, 26], fov: 42, near: 0.1, far: 400 }}
-      // A dark room: the scene must sit on the same ground as the rest of the UI.
-      onCreated={({ gl }) => gl.setClearColor("#0f172a")}
+      camera={{ position: [0, 24, 30], fov: 40, near: 0.1, far: 400 }}
+      // A dark hall: the scene must sit on the same ground as the rest of the UI.
+      onCreated={({ gl }) => gl.setClearColor("#14121f")}
     >
-      <fog attach="fog" args={["#0f172a", 45, 120]} />
-      <ambientLight intensity={0.55} />
-      <hemisphereLight args={["#8ea6c8", "#0b1220", 0.5]} />
-      <directionalLight position={[18, 30, 14]} intensity={1.1} />
-      <directionalLight position={[-20, 14, -12]} intensity={0.35} color="#7aa2ff" />
+      <fog attach="fog" args={["#14121f", 55, 140]} />
+      <ambientLight intensity={0.42} />
+      <hemisphereLight args={["#9db2d4", "#0d0b16", 0.55]} />
+      <directionalLight
+        position={[26, 38, 18]}
+        intensity={1.35}
+        castShadow
+        shadow-mapSize={[2048, 2048]}
+        // Tight frustum around the hall: a loose one spends its whole shadow
+        // map on empty floor and the edges turn to mush.
+        shadow-camera-left={-60}
+        shadow-camera-right={60}
+        shadow-camera-top={40}
+        shadow-camera-bottom={-40}
+        shadow-bias={-0.0006}
+      />
+      {/* Fill from the opposite side so the shadowed faces are readable rather
+          than black. Deliberately cool and weak: it models bounce, not a lamp. */}
+      <directionalLight position={[-26, 16, -14]} intensity={0.32} color="#8ea6ff" />
+      {/* The line itself is the brightest thing in the hall, the way a real
+          plant lights the work and leaves the aisles dim. */}
+      <spotLight
+        position={[0, 26, 0]}
+        angle={0.75}
+        penumbra={0.8}
+        intensity={95}
+        distance={70}
+        color="#dce6ff"
+      />
 
       <Ground />
       <Zones showLabels={props.showLabels} />
       <Conveyor config={props.config} />
-      <Stations {...props} />
+      <Stations {...props} reducedMotion={reducedMotion} />
       <Units {...props} reducedMotion={reducedMotion} />
       <Agvs frame={props.frame} config={props.config} />
       {/* Mal kabul: rampa ve gelen tırlar. Blender'da üretilmiş modeller,
@@ -89,9 +123,11 @@ export function FactoryScene(props: FactorySceneProps) {
 function Ground() {
   return (
     <>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.02, 0]}>
+      {/* receiveShadow is what makes the machines sit on the floor rather than
+          hover above it. Without it the lighting is decorative. */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.02, 0]} receiveShadow>
         <planeGeometry args={[160, 90]} />
-        <meshStandardMaterial color={FLOOR} roughness={1} metalness={0} />
+        <meshStandardMaterial color={FLOOR} roughness={0.95} metalness={0.05} />
       </mesh>
       <Grid
         position={[0, 0, 0]}
@@ -141,21 +177,42 @@ function Zones({ showLabels }: { showLabels: boolean }) {
   );
 }
 
-/** The transfer line itself, drawn from the route's first and last station. */
+/**
+ * The transfer line, as repeated conveyor sections rather than one long slab.
+ *
+ * A single stretched box reads as a painted stripe on the floor. Real belt
+ * sections with rails and rollers read as a line a car travels along, and that
+ * is the whole point of this view.
+ */
 function Conveyor({ config }: { config: FactoryDescriptor }) {
   const first = config.line.route[0];
   const last = config.line.route[config.line.route.length - 1];
   if (!first || !last) return null;
   const [x0, , z] = stationWorld(config, first);
   const [x1] = stationWorld(config, last);
-  const length = x1 - x0 + 6;
+
+  // One section per 4 world units, which is the modelled length of a section.
+  const span = x1 - x0 + 8;
+  // One modelled section is 4 m long; at the current asset scale that is
+  // 4 * ASSET_SCALE world units.
+  const count = Math.max(1, Math.round(span / (4 * ASSET_SCALE)));
+  const step = span / count;
+  const start = x0 - 4 + step / 2;
 
   return (
-    <mesh position={[(x0 + x1) / 2, 0.12, z]}>
-      <boxGeometry args={[length, 0.14, 1.5]} />
-      <meshStandardMaterial color="#1c2740" roughness={0.9} metalness={0.1} />
-    </mesh>
+    <Suspense fallback={null}>
+      <group>
+        {Array.from({ length: count }, (_, index) => (
+          <ConveyorSection key={index} position={[start + index * step, 0, z]} />
+        ))}
+      </group>
+    </Suspense>
   );
+}
+
+function ConveyorSection({ position }: { position: [number, number, number] }) {
+  const model = useModel(MODEL.conveyor);
+  return <primitive object={model} position={position} scale={ASSET_SCALE} />;
 }
 
 // ---------------------------------------------------------------------------
@@ -168,7 +225,8 @@ function Stations({
   showLabels,
   onSelectStation,
   selectedStation,
-}: FactorySceneProps) {
+  reducedMotion,
+}: FactorySceneProps & { reducedMotion: boolean }) {
   const byId = new Map(frame.machines.map((machine) => [machine.id, machine]));
 
   return (
@@ -183,6 +241,7 @@ function Stations({
             machine={machine}
             showLabel={showLabels}
             selected={selectedStation === station.id}
+            reducedMotion={reducedMotion}
             onSelect={() => onSelectStation(station.id)}
           />
         );
@@ -196,12 +255,14 @@ function StationMesh({
   machine,
   showLabel,
   selected,
+  reducedMotion,
   onSelect,
 }: {
   station: StationConfig;
   machine: Machine;
   showLabel: boolean;
   selected: boolean;
+  reducedMotion: boolean;
   onSelect: () => void;
 }) {
   const [hovered, setHovered] = useState(false);
@@ -221,8 +282,24 @@ function StationMesh({
 
   return (
     <group position={[x, 0, z]}>
+      {/* The machine itself, chosen by work centre: a press looks like a
+          press, a body shop has robots either side of the line. The invisible
+          box in front of it is the click target — picking against the real
+          geometry would make thin parts like a robot torch impossible to hit. */}
+      <group>
+        <Suspense fallback={null}>
+          <StationBody
+            workCenter={station.workCenter}
+            running={machine.status === "RUNNING"}
+            progress={progress}
+            reducedMotion={reducedMotion}
+          />
+        </Suspense>
+      </group>
+
       <mesh
-        position={[0, 0.6, 0]}
+        position={[0, 1.1, 0]}
+        visible={false}
         onClick={(event) => {
           event.stopPropagation();
           onSelect();
@@ -233,13 +310,18 @@ function StationMesh({
         }}
         onPointerOut={() => setHovered(false)}
       >
-        <boxGeometry args={[2.4, 1.2, 2.4]} />
-        <meshStandardMaterial
-          color={selected || hovered ? "#3a4a68" : "#243149"}
-          roughness={0.7}
-          metalness={0.25}
-        />
+        <boxGeometry args={[3.4, 2.2, 3.4]} />
       </mesh>
+
+      {/* Selection ring on the floor rather than a tint on the body: a machine
+          that changed colour when picked would collide with the status colour,
+          which is the one thing on this screen that must never be ambiguous. */}
+      {selected || hovered ? (
+        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.02, 0]}>
+          <ringGeometry args={[1.85, 2.1, 32]} />
+          <meshBasicMaterial color={selected ? "#e2e8f0" : "#94a3b8"} transparent opacity={0.7} />
+        </mesh>
+      ) : null}
 
       {/* Status beacon: the machine's own state, nothing else. */}
       <mesh position={[0, 1.45, 0]}>
@@ -427,6 +509,20 @@ function Units({
 }
 
 /**
+ * The car itself, loaded once and cloned per unit.
+ *
+ * `placeUnits` reports a slot height of 0.55, which was tuned for the old
+ * 0.3-high box. The body is offset so its wheels meet the belt rather than
+ * hovering above it or sinking through it.
+ */
+function VehicleBody() {
+  const model = useModel(MODEL.vehicle);
+  return (
+    <primitive object={model} scale={ASSET_SCALE * 0.62} position={[0, BELT_HEIGHT - 0.55, 0]} />
+  );
+}
+
+/**
  * A vehicle body.
  *
  * The mesh eases toward the position the twin published rather than jumping to
@@ -475,20 +571,20 @@ function UnitMesh({
       }}
       onPointerOut={() => setHovered(false)}
     >
-      <mesh>
-        <boxGeometry args={[1.05, 0.3, 0.55]} />
-        {/* The unit under the tool is lit, so the eye finds the work in progress. */}
-        <meshStandardMaterial
+      {/* An actual car body. The status colour moved off the paintwork and
+          onto a floor pad underneath, because a vehicle that turns red is
+          read as "painted red", not as "in trouble". */}
+      <Suspense fallback={null}>
+        <VehicleBody />
+      </Suspense>
+
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, BELT_HEIGHT - 0.54, 0]}>
+        <planeGeometry args={[2.4, 1.5]} />
+        <meshBasicMaterial
           color={colour}
-          roughness={0.45}
-          metalness={0.35}
-          emissive={hovered || unit.active ? colour : "#000000"}
-          emissiveIntensity={hovered ? 0.45 : unit.active ? 0.22 : 0}
+          transparent
+          opacity={hovered ? 0.85 : unit.active ? 0.6 : 0.32}
         />
-      </mesh>
-      <mesh position={[-0.05, 0.24, 0]}>
-        <boxGeometry args={[0.5, 0.22, 0.48]} />
-        <meshStandardMaterial color={colour} roughness={0.35} metalness={0.4} />
       </mesh>
       {unit.reworkCount > 0 ? (
         <mesh position={[0, 0.45, 0]}>

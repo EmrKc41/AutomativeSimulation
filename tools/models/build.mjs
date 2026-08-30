@@ -18,7 +18,11 @@ import { fileURLToPath } from "node:url";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(here, "..", "..");
 const outDir = path.join(root, "web", "public", "models");
-const script = path.join(here, "build_assets.py");
+const buildScript = path.join(here, "build_assets.py");
+const previewScript = path.join(here, "preview.py");
+const previewOut = path.join(root, "docs", "onizleme.png");
+/** Satir ayirici: Blender ciktisinda hem LF hem CRLF gorulebiliyor. */
+const NEWLINES = new RegExp(String.fromCharCode(13) + "?" + String.fromCharCode(10));
 
 function findBlender() {
   if (process.env["BLENDER"]) return process.env["BLENDER"];
@@ -68,13 +72,40 @@ if (blender === null) {
   process.exit(1);
 }
 
-const wanted = process.argv.slice(2);
+const argv = process.argv.slice(2);
+
+/**
+ * Önizleme modu.
+ *
+ * Varlıkları üretmek başka, **neye benzediklerini görmek** başka. Geliştirme
+ * ortamındaki tarayıcı paneli kare üretmediği için sahne render edilmiyordu ve
+ * modeller görülmeden gönderiliyordu — bir tur bu yüzden ölçeği tamamen yanlış
+ * çıktı. Bu mod aynı `.glb` dosyalarını fabrika yerleşimine dizip tek bir PNG
+ * yazıyor, yani iş kontrol edilebiliyor.
+ */
+if (argv[0] === "--onizleme") {
+  console.log(`Blender : ${blender}`);
+  const out = execFileSync(
+    blender,
+    ["--background", "--python", previewScript, "--", outDir, previewOut],
+    { encoding: "utf8" },
+  );
+  const line = out.split(NEWLINES).find((row) => row.startsWith("ONIZLEME "));
+  if (!line) {
+    console.error("Önizleme üretilemedi. Blender çıktısı:" + out);
+    process.exit(1);
+  }
+  console.log(`Önizleme: ${path.relative(root, previewOut)}`);
+  process.exit(0);
+}
+
+const wanted = argv;
 console.log(`Blender : ${blender}`);
 console.log(`Çıktı   : ${path.relative(root, outDir)}`);
 
 const output = execFileSync(
   blender,
-  ["--background", "--python", script, "--", outDir, ...wanted],
+  ["--background", "--python", buildScript, "--", outDir, ...wanted],
   { encoding: "utf8" },
 );
 

@@ -422,6 +422,62 @@ Tır eklemesi iki testi düşürdü ve ikisi de **zaten kırılgandı**:
 
 Aynı ders üçüncü kez: **tek tohum hiçbir şey kanıtlamaz.**
 
+### Üretim sahası modellendi (Faz 4-6'nın görsel tarafı)
+
+14 varlık var. Her iş merkezi kendi makinesini alıyor ve seçim **`workCenter`
+alanına göre** yapılıyor, id'ye göre değil — rotaya yeni bir kaynak istasyonu
+eklendiğinde tek satır kod yazmadan doğru modeli alır.
+
+| İş merkezi   | Sahnede ne var                                             |
+| ------------ | ---------------------------------------------------------- |
+| Pres         | C gövdeli pres; koç kafası istasyon çalışırken iniyor      |
+| Gövde        | Konveyör + karşılıklı iki kaynak robotu + operatör         |
+| Boya         | Kesitli boya kabini (ön duvar alçak) + içeride boya robotu |
+| Montaj       | Konveyör + üstten köprü + robot + iki operatör             |
+| Kalite       | Kalite kapısı + tarayıcı kafaları + kontrolör              |
+| Tamir        | Açık tezgâh alanı + iki tamirci                            |
+| _tanınmayan_ | Konveyör — yeni istasyon boş kalmıyor                      |
+
+Renkler dekor değil: pres mavi, boyahane yeşil, kalite kapısı mor. Hepsi düşük
+doygunlukta seçildi ki **durum renkleriyle** (yeşil/sarı/turuncu/kırmızı)
+çakışmasın — sahnede parlayan tek şey makinenin durumu olmalı.
+
+Araç artık kutu değil: kaporta, geri çekilmiş kabin, camlar, farlar, stoplar,
+jantlı tekerlekler. Durum rengi kaportadan alınıp **altındaki zemin pedine**
+taşındı, çünkü kırmızıya dönen bir araç "sorunlu" değil "kırmızıya boyanmış"
+diye okunuyor.
+
+### Kör çalışmayı bitiren şey: `npm run preview`
+
+```bash
+npm run preview
+```
+
+Aynı `.glb` dosyalarını fabrika yerleşimine dizip `docs/onizleme.png` yazıyor.
+
+Buna ihtiyaç vardı çünkü geliştirme ortamındaki tarayıcı paneli kare üretmiyor:
+`requestAnimationFrame` tetiklenmiyor, sahne hiç render edilmiyor, dolayısıyla
+modeller **görülmeden** gönderiliyordu. İlk turda ölçek tamamen yanlış çıktı ve
+bu ancak render alınınca fark edildi — `ASSET_SCALE` 0.42 iken makineler
+istasyon aralığının altıda biri kadardı. Şu an 1.05.
+
+> Önizleme tarayıcıdaki sahnenin yerini tutmaz; ışıklandırma, gölge ve
+> etkileşim orada. Cevapladığı soru şu: "pres presse benziyor mu, araba arabaya
+> benziyor mu." Ölçek sabitleri (`KONUM_OLCEK`, `VARLIK_OLCEK`)
+> `scene-layout.ts` ve `factory-models.tsx` ile birebir aynı olmalı; ayrı
+> düşerlerse önizleme başka bir fabrikayı gösterir.
+
+### Görsel efektler
+
+- **Gölge açıldı.** Tek gölge veren ışık; glTF mesh'leri `castShadow` /
+  `receiveShadow` ile işaretleniyor (varsayılan olarak gölge vermiyorlar, bunu
+  unutmak nesneleri zeminin üstünde yüzüyormuş gibi bırakır).
+- Hattın üstünde tavan spotu: gerçek bir fabrika işi aydınlatır, koridorları
+  loş bırakır.
+- Konveyör tek uzun kutu değil, **tekrarlanan bölümler** — raylı ve rulolu.
+- Seçim, makinenin rengini değiştirmek yerine zemine halka çiziyor; renk
+  değiştirmek durum rengiyle çakışırdı.
+
 ### Sırada ne var
 
 Şartnamenin Faz 2'si: giriş kalite kontrol + insan silüetleri. Motor tarafı
