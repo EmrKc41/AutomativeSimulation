@@ -248,8 +248,12 @@ def rampa(klasor):
     malzeme(pah(cephe, 0.06), "depo-cephe", (0.21, 0.22, 0.28), metal=0.15, puruz=0.8)
     parcalar.append(cephe)
 
-    # Çatı saçağı — cepheden az taşıyor, yanaşan tırın üstünü örtüyor
-    sacak = kutu("sacak", (4.6, 16.0, 0.35), konum=(-0.8, 0, 6.85))
+    # Çatı saçağı — yalnızca kapıların üstünü örtüyor.
+    #
+    # İlk sürümde 4.6 m taşıyordu ve ekrandan bakıldığında bütün mal kabul
+    # alanını gizleyen düz bir levha gibi duruyordu. Saçak, altındaki işi
+    # göstermeyi engelliyorsa yanlış boyuttadır.
+    sacak = kutu("sacak", (1.8, 16.0, 0.3), konum=(-2.4, 0, 6.9))
     malzeme(pah(sacak, 0.04), "depo-cephe", (0.21, 0.22, 0.28), metal=0.15, puruz=0.8)
     parcalar.append(sacak)
 
@@ -826,6 +830,140 @@ def kalite_masasi(klasor):
     disa_aktar("iqc-masa", klasor)
 
 
+def doli(klasor):
+    """
+    Doli arabası — iç lojistik taşıma arabası.
+
+    Hücrelere parça besleyen şey bu. Motor zaten onu **hammadde deposundan
+    ilgili hücrenin hat kenarına** sürüyor; burada eksik olan tek şey neye
+    benzediğiydi: düz bir kutuydu.
+
+    Arabayı araba yapan üç şey: alçak yük platformu, dört küçük tekerlek ve
+    öne uzanan çeki oku. Ok olmadan kendi kendine giden bir kutu gibi durur;
+    gerçek doli çekilir.
+
+    Uzunluk ekseni +X, ok önde.
+    """
+    temizle()
+    parcalar = []
+
+    # Yük platformu
+    platform = kutu("platform", (1.9, 1.1, 0.1), konum=(0, 0, 0.42))
+    malzeme(pah(platform, 0.02), "doli-platform", (0.30, 0.33, 0.40), metal=0.5, puruz=0.5)
+    parcalar.append(platform)
+
+    # Şase
+    sase = kutu("sase", (1.8, 0.9, 0.09), konum=(0, 0, 0.3))
+    malzeme(sase, "doli-sase", KOYU, metal=0.5, puruz=0.55)
+    parcalar.append(sase)
+
+    # Köşe dikmeleri — yükün kaymasını engelleyen kafes
+    for x in (-0.85, 0.85):
+        for y in (-0.48, 0.48):
+            dikme = kutu("dikme", (0.07, 0.07, 0.55), konum=(x, y, 0.74))
+            malzeme(dikme, "doli-kafes", SARI, metal=0.4, puruz=0.45)
+            parcalar.append(dikme)
+
+    # Tekerlekler — küçük, endüstriyel
+    for x in (-0.7, 0.7):
+        for y in (-0.5, 0.5):
+            teker = silindir(
+                "teker", 0.16, 0.1, konum=(x, y, 0.16), donme=(math.pi / 2, 0, 0), kenar=10
+            )
+            malzeme(teker, "doli-teker", LASTIK, puruz=0.9)
+            parcalar.append(teker)
+
+    # Çeki oku — arabanın çekildiğini anlatan parça
+    ok = kutu("ceki-oku", (0.9, 0.09, 0.09), konum=(1.35, 0, 0.3))
+    malzeme(ok, "doli-ok", CELIK, metal=0.7, puruz=0.4)
+    parcalar.append(ok)
+    halka = silindir("halka", 0.11, 0.06, konum=(1.78, 0, 0.3), kenar=10)
+    malzeme(halka, "doli-ok", CELIK, metal=0.7, puruz=0.4)
+    parcalar.append(halka)
+
+    birlestir(parcalar, "Doli")
+    disa_aktar("doli", klasor)
+
+
+def sevkiyat_binasi(klasor):
+    """
+    Sevkiyat binası — mal kabulle aynı mantık, ters yön.
+
+    Talep açıktı: "mal kabul için uygulanan mantığın aynısını sevkiyata da
+    uygula". Aynı aile, aynı cephe, aynı kapı işaretleri; fark yalnızca
+    kapıların **+X'e** bakması, çünkü araç fabrikadan o yöne çıkıyor.
+    """
+    temizle()
+    parcalar = []
+
+    cephe = kutu("cephe", (1.0, 15.0, 6.4), konum=(3.5, 0, 3.2))
+    malzeme(pah(cephe, 0.06), "sevk-cephe", (0.21, 0.22, 0.28), metal=0.15, puruz=0.8)
+    parcalar.append(cephe)
+
+    sacak = kutu("sacak", (1.8, 15.0, 0.3), konum=(2.4, 0, 6.3))
+    malzeme(pah(sacak, 0.04), "sevk-cephe", (0.21, 0.22, 0.28), metal=0.15, puruz=0.8)
+    parcalar.append(sacak)
+
+    for y in (-4.6, 0.0, 4.6):
+        kapi = kutu("kapi", (0.12, 3.9, 4.2), konum=(2.95, y, 2.4))
+        malzeme(kapi, "sevk-kapi", (0.07, 0.08, 0.11), puruz=0.9)
+        parcalar.append(kapi)
+
+        serit = kutu("serit", (0.14, 3.9, 0.2), konum=(2.94, y, 4.62))
+        malzeme(serit, "sevk-serit", SARI, puruz=0.6)
+        parcalar.append(serit)
+
+        platform = kutu("platform", (3.4, 5.2, 1.2), konum=(1.2, y, 0.6))
+        malzeme(pah(platform, 0.04), "sevk-beton", (0.26, 0.27, 0.32), puruz=0.95)
+        parcalar.append(platform)
+
+    birlestir(parcalar, "SevkiyatBinasi")
+    disa_aktar("sevkiyat", klasor)
+
+
+def gecis(klasor):
+    """
+    Giriş kaliteden üretime geçiş.
+
+    Talebin en somut maddesi: giriş kalite kapısının **arkasında** malın
+    üretime geçtiği bir delik olmalı. Onaylanan malzemenin nereden içeri
+    girdiği planda görünmüyordu; kontrol edilen mal sanki havada üretime
+    ışınlanıyordu.
+
+    Bir duvar parçası ve içinde bir açıklık. Açıklığın kenarı sarı-siyah
+    şeritli, çünkü sahada geçiş noktaları işaretlidir.
+    """
+    temizle()
+    parcalar = []
+
+    # Duvar, ortasında boşluk bırakacak şekilde dört parça
+    for y, genislik in ((-4.2, 4.4), (4.2, 4.4)):
+        kanat = kutu("kanat", (0.6, genislik, 5.0), konum=(0, y, 2.5))
+        malzeme(pah(kanat, 0.04), "gecis-duvar", (0.20, 0.21, 0.27), metal=0.15, puruz=0.8)
+        parcalar.append(kanat)
+
+    lento = kutu("lento", (0.6, 4.2, 1.4), konum=(0, 0, 4.3))
+    malzeme(pah(lento, 0.04), "gecis-duvar", (0.20, 0.21, 0.27), metal=0.15, puruz=0.8)
+    parcalar.append(lento)
+
+    # Açıklığın kenarları — geçişi işaretleyen sarı çerçeve
+    for y in (-2.05, 2.05):
+        kenar = kutu("kenar", (0.66, 0.16, 3.6), konum=(0, y, 1.8))
+        malzeme(kenar, "gecis-serit", SARI, puruz=0.55)
+        parcalar.append(kenar)
+    ust = kutu("ust-kenar", (0.66, 4.26, 0.16), konum=(0, 0, 3.68))
+    malzeme(ust, "gecis-serit", SARI, puruz=0.55)
+    parcalar.append(ust)
+
+    # Zemindeki geçiş eşiği
+    esik = kutu("esik", (0.9, 4.0, 0.06), konum=(0, 0, 0.03))
+    malzeme(esik, "gecis-esik", (0.30, 0.28, 0.16), puruz=0.9)
+    parcalar.append(esik)
+
+    birlestir(parcalar, "Gecis")
+    disa_aktar("gecis", klasor)
+
+
 VARLIKLAR = {
     # Faz 1 — mal kabul
     "tir": tir,
@@ -833,6 +971,9 @@ VARLIKLAR = {
     "palet": palet,
     "rampa": rampa,
     "iqc-masa": kalite_masasi,
+    "gecis": gecis,
+    "sevkiyat": sevkiyat_binasi,
+    "doli": doli,
     # Faz 3 — depo
     "raf": raf,
     # Faz 4-6 — üretim sahası

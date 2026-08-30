@@ -518,6 +518,33 @@ DISPATCHED → IN_TRANSIT → DELIVERED`), yani yeni motor mantığı gerekmedi.
 Yedi yeni web testi bunu koruyor — özellikle "teslim edilmiş sevkiyat
 çizilmez" ve "taşıyıcı tam da yüklenen aracı taşır".
 
+### Yerleşim revizyonu — altı madde
+
+Kullanıcının saha talimatı, altı somut madde. Hepsi uygulandı ve teste bağlandı.
+
+| #   | Talep                                   | Ne yapıldı                                                                                  |
+| --- | --------------------------------------- | ------------------------------------------------------------------------------------------- |
+| 1   | Mal kabul sola, bağımsız alan           | `-20` plan birimine alındı; giriş kaliteyle arasında 18 birim boşluk — tırın manevra sahası |
+| 2   | Mal kabul tırı düz dursun               | Kapı rampanın **tam önüne** alındı; tır düz gelip düz yanaşıyor, açı sabit `0`              |
+| 3   | Giriş kalitenin arkasında üretime geçiş | `PRODUCTION-GATE` konumu + sarı çerçeveli açıklık modeli                                    |
+| 4   | Sevkiyata aynı mantık                   | Kendi binası, kendi kapıları; bitmiş ürün deposundan 32 birim ötede                         |
+| 5   | Sevkiyat tırı yüzü sağa, düz            | Çıkış rampanın tam sağında; taşıyıcı açısı sabit `0`, yanal kayma yok                       |
+| 6   | Doli arabaları + tanımlı güzergâh       | `doli` modeli + zemine çizili yol çizgileri: koridor + her hücreye sapma                    |
+
+**Tırın çapraz durması neden yanlıştı:** dorse kapıya dik girer. Çapraz duran
+bir tır rampaya yanaşamaz, sadece yanaşmış gibi görünür. Kapı hem yanda hem
+geride olduğu için açı hesaplanıyordu; artık güzergâh tek eksende ve açı sabit.
+
+**Doli güzergâhı zaten motorda tanımlıydı** — her taşıma işi
+`hammadde deposu → ilgili hücrenin hat kenarı` yönünde ve başka yere gitmiyor
+(`assignMoveTasks`). Eksik olan görünürlüktü. Zemine çizilen çizgiler bunu
+planda da söylüyor; koridor **hattan ayrı**, çünkü aynı hizada olsaydı doli ile
+araç aynı yerden geçerdi ve sahada ilk kaldırılacak şey odur.
+
+**Mal kabul saçağı küçültüldü.** 4,6 m taşıyordu ve ekrandan bakıldığında
+altındaki bütün işi gizleyen düz bir levha gibi duruyordu. Saçak, göstermesi
+gereken şeyi gizliyorsa yanlış boyuttadır.
+
 ### Sırada ne var
 
 Şartnamenin Faz 2'si: giriş kalite kontrol + insan silüetleri. Motor tarafı

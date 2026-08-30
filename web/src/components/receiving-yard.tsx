@@ -10,6 +10,7 @@ import {
   dockPlacement,
   incomingQcPlacement,
   placeTrucks,
+  productionGatePlacement,
   quarantinePlacement,
   type PlacedTruck,
 } from "@/lib/scene-layout";
@@ -41,6 +42,7 @@ export function ReceivingYard({
   const dock = useMemo(() => dockPlacement(config), [config]);
   const qc = useMemo(() => incomingQcPlacement(config), [config]);
   const quarantine = useMemo(() => quarantinePlacement(config), [config]);
+  const gate = useMemo(() => productionGatePlacement(config), [config]);
 
   // Karantinadaki parti sayısı — boşsa alan da boş görünmeli.
   const quarantined = frame.inventory.filter((balance) => balance.status === "QUARANTINE").length;
@@ -49,6 +51,7 @@ export function ReceivingYard({
     <group>
       <Dock position={dock} />
       <IncomingQc position={qc} />
+      <ProductionGate position={gate} />
       <Quarantine position={quarantine} lots={quarantined} />
       {trucks.map((truck) => (
         <Truck key={truck.id} truck={truck} showLabels={showLabels} />
@@ -78,6 +81,18 @@ function IncomingQc({ position }: { position: readonly [number, number, number] 
       />
     </group>
   );
+}
+
+/**
+ * Onaylanan malzemenin üretime geçtiği açıklık.
+ *
+ * Giriş kalitesinden çıkan mal buradan hatta giriyor. Bu nokta planda yoktu ve
+ * kontrol edilen malzeme sanki havada üretime ışınlanıyordu; onaylanan malın
+ * nereden içeri girdiği görünmüyordu.
+ */
+function ProductionGate({ position }: { position: readonly [number, number, number] }) {
+  const model = useModel(MODEL.productionGate);
+  return <primitive object={model} position={[position[0], 0, position[2]]} scale={ASSET_SCALE} />;
 }
 
 /**

@@ -6,7 +6,7 @@ import { useMemo } from "react";
 import { ASSET_SCALE, MODEL, useModel } from "@/components/factory-models";
 import type { FactoryDescriptor } from "@/lib/api";
 import type { FactoryFrame } from "@/lib/contract";
-import { placeCarriers, type PlacedCarrier } from "@/lib/scene-layout";
+import { placeCarriers, shippingBuildingPlacement, type PlacedCarrier } from "@/lib/scene-layout";
 import { SHIPMENT_STATE, TONE } from "@/lib/status";
 
 /**
@@ -30,14 +30,28 @@ export function ShippingYard({
   showLabels: boolean;
 }) {
   const carriers = useMemo(() => placeCarriers(config, frame), [config, frame]);
+  const building = useMemo(() => shippingBuildingPlacement(config), [config]);
 
   return (
     <group>
+      <ShippingBuilding position={building} />
       {carriers.map((carrier) => (
         <Carrier key={carrier.id} carrier={carrier} showLabels={showLabels} />
       ))}
     </group>
   );
+}
+
+/**
+ * Sevkiyat binası — mal kabulle aynı mantık, ters yön.
+ *
+ * Sevkiyat da bağımsız bir alan olmalıydı: bitmiş ürün deposundan ayrı, kendi
+ * cephesi, kendi kapıları ve kendi manevra sahasıyla. Kapılar +X'e bakıyor,
+ * çünkü araç fabrikadan o yöne çıkıyor.
+ */
+function ShippingBuilding({ position }: { position: readonly [number, number, number] }) {
+  const model = useModel(MODEL.shippingBuilding);
+  return <primitive object={model} position={[position[0], 0, position[2]]} scale={ASSET_SCALE} />;
 }
 
 function Carrier({ carrier, showLabels }: { carrier: PlacedCarrier; showLabels: boolean }) {

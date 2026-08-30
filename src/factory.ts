@@ -13,6 +13,8 @@ import type { FactoryConfig, StationConfig } from "./domain.ts";
 export const LOCATIONS = {
   receiving: "RECEIVING-DOCK",
   incomingQc: "INCOMING-QC",
+  /** Onaylanan malzemenin üretime geçtiği açıklık. */
+  productionGate: "PRODUCTION-GATE",
   quarantine: "QUARANTINE",
   rawStock: "RAW-STOCK-A",
   finishedGoods: "FINISHED-GOODS",
@@ -29,12 +31,19 @@ export const LOCATIONS = {
  * kimsenin yapmayacağı bir şey.
  */
 export const LOCATION_POSITIONS: Readonly<Record<string, readonly [number, number]>> = {
-  [LOCATIONS.receiving]: [0, 0],
-  [LOCATIONS.incomingQc]: [11, 0],
-  [LOCATIONS.quarantine]: [11, 20],
-  [LOCATIONS.rawStock]: [22, 0],
+  // Mal kabul bağımsız bir alan: giriş kalitesinden 18 birim uzakta duruyor,
+  // yani tırın manevra sahası üretim alanına girmiyor.
+  [LOCATIONS.receiving]: [-20, 0],
+  [LOCATIONS.incomingQc]: [-2, 0],
+  // Onaylanan malzeme üretime buradan geçiyor. Bu nokta olmadan kontrol
+  // edilen mal sanki havada hatta ışınlanıyordu.
+  [LOCATIONS.productionGate]: [8, 0],
+  [LOCATIONS.quarantine]: [-2, 20],
+  [LOCATIONS.rawStock]: [20, 0],
   [LOCATIONS.finishedGoods]: [140, 0],
-  [LOCATIONS.shipping]: [165, 0],
+  // Sevkiyat da bağımsız: bitmiş ürün deposundan 32 birim ötede, kendi
+  // binası ve kendi manevra sahasıyla.
+  [LOCATIONS.shipping]: [172, 0],
 };
 
 /** Line-side stock location for a station; the AGV replenishment target. */

@@ -101,14 +101,18 @@ export interface Zone {
  * henüz kontrol edilmemiş malın oraya gittiğini ima ediyordu.
  */
 export const ZONES: readonly Zone[] = [
-  { id: "inbound", label: "Mal Kabul", rect: [-7, -6, 6, 8], tone: "logistics" },
-  { id: "iqc", label: "Giriş Kalite", rect: [6, -6, 17, 8], tone: "warn" },
-  { id: "quarantine", label: "Karantina", rect: [5, 14, 18, 27], tone: "risk" },
-  { id: "store", label: "Hammadde Deposu", rect: [17, -6, 30, 8], tone: "logistics" },
+  // Mal kabul bağımsız bir alan: aradaki boşluk tırın manevra sahası ve
+  // planda "burası ayrı bir bölge" demenin yolu.
+  { id: "inbound", label: "Mal Kabul", rect: [-30, -12, -10, 12], tone: "logistics" },
+  { id: "iqc", label: "Giriş Kalite", rect: [-8, -7, 4, 8], tone: "warn" },
+  { id: "gate", label: "Üretime Geçiş", rect: [5, -6, 12, 7], tone: "ok" },
+  { id: "quarantine", label: "Karantina", rect: [-8, 14, 4, 27], tone: "risk" },
+  { id: "store", label: "İç Lojistik Deposu", rect: [14, -7, 28, 8], tone: "logistics" },
   { id: "line", label: "Hat 01", rect: [32, -6, 130, 8], tone: "ok" },
   { id: "rework", label: "Tamir Hücresi", rect: [90, 20, 114, 36], tone: "risk" },
   { id: "finished", label: "Bitmiş Ürün", rect: [132, -8, 150, 10], tone: "ok" },
-  { id: "shipping", label: "Sevkiyat Sahası", rect: [154, -10, 178, 12], tone: "logistics" },
+  // Sevkiyat da bağımsız, mal kabulle aynı mantık.
+  { id: "shipping", label: "Sevkiyat", rect: [162, -12, 186, 12], tone: "logistics" },
 ];
 
 export interface CameraBookmark {
@@ -281,19 +285,26 @@ export interface PlacedTruck {
  * Mal kabul rampasının solunda ve dışında. Tır buradan rampaya doğru sürüyor,
  * yani hareketin yönü izleyiciye "içeri geliyor" diyor.
  */
-const GATE_OFFSET_X = -34;
-const GATE_OFFSET_Z = 16;
+const GATE_OFFSET_Z = 34;
 
 /** Rampada tırın durduğu nokta — rampanın önü, hattın dışında. */
 function dockWorld(config: FactoryDescriptor): World {
   const [x, y] = planPosition(config, "RECEIVING-DOCK");
   const [wx, , wz] = toWorld(x, y);
-  return [wx, 0, wz + 7];
+  // Rampanın önü. Tır buraya dorse önde yanaşıyor.
+  return [wx + 4, 0, wz + 3];
 }
 
+/**
+ * Fabrika kapısı: tırın sahaya girdiği nokta.
+ *
+ * Rampanın **tam önünde**, sadece uzakta. Böylece tır düz gelip düz yanaşıyor.
+ * Önceki sürümde kapı hem yanda hem geride olduğu için tır rampaya çapraz
+ * yanaşıyordu — bir tırın asla yapmayacağı şey; dorse kapıya dik girer.
+ */
 function gateWorld(config: FactoryDescriptor): World {
   const [x, , z] = dockWorld(config);
-  return [x + GATE_OFFSET_X, 0, z + GATE_OFFSET_Z];
+  return [x, 0, z + GATE_OFFSET_Z];
 }
 
 /**
@@ -318,8 +329,10 @@ export function placeTrucks(config: FactoryDescriptor, frame: FactoryFrame): Pla
     return {
       id: truck.id,
       position,
-      // Rampaya yanaşmış tır hattı gösterir; yoldaki tır gittiği yöne bakar.
-      heading: Math.atan2(dock[0] - gate[0], dock[2] - gate[2]),
+      // Düz duruş: tır rampaya dik yanaşıyor, çapraz değil. Sabit açı, çünkü
+      // güzergâh da düz — hesaplanan bir açı burada yalnızca yuvarlama
+      // hatasıyla eğrilik üretirdi.
+      heading: 0,
       status: truck.status,
       batchId: truck.batchId,
       materialId: truck.materialId,
@@ -356,10 +369,16 @@ function carrierDock(config: FactoryDescriptor): World {
   return toWorld(x, y);
 }
 
-/** Fabrika çıkışı: taşıyıcının sahayı terk ettiği yön. */
+/**
+ * Fabrika çıkışı.
+ *
+ * Rampanın tam sağında: taşıyıcı yüzü sağa dönük yükleniyor ve aynı hat
+ * üzerinde düz çıkıyor. Önceki sürümde çıkış hem sağda hem ileride olduğu için
+ * taşıyıcı çapraz duruyordu.
+ */
 function carrierExit(config: FactoryDescriptor): World {
   const [x, , z] = carrierDock(config);
-  return [x + 30, 0, z + 12];
+  return [x + 34, 0, z];
 }
 
 /**
@@ -373,7 +392,9 @@ function carrierExit(config: FactoryDescriptor): World {
 export function placeCarriers(config: FactoryDescriptor, frame: FactoryFrame): PlacedCarrier[] {
   const dock = carrierDock(config);
   const exit = carrierExit(config);
-  const heading = Math.atan2(exit[0] - dock[0], exit[2] - dock[2]);
+  // Yüzü sağa dönük, düz. Taşıyıcının burnu +X'e bakıyor ve modelin uzunluk
+  // ekseni de +X, yani ek bir döndürme gerekmiyor.
+  const heading = 0;
 
   const visible = frame.shipments.filter(
     (shipment) =>
@@ -389,15 +410,16 @@ export function placeCarriers(config: FactoryDescriptor, frame: FactoryFrame): P
     const transit = Math.max(1, config.line.shiftTicks > 0 ? shipment.ticksRemaining : 1);
     const t = leaving ? Math.max(0, Math.min(1, 1 - shipment.ticksRemaining / (transit + 1))) : 0;
 
-    // Rampada bekleyenler yan yana dizilsin, üst üste binmesin.
-    const queue = leaving ? 0 : index * 6;
+    // Rampada bekleyenler arka arkaya dizilsin, üst üste binmesin. Kapılar
+    // Z ekseni boyunca sıralandığı için sıra da o yönde.
+    const queue = leaving ? 0 : index * 7;
 
     return {
       id: shipment.id,
       position: [
-        dock[0] + (exit[0] - dock[0]) * t - queue,
+        dock[0] + (exit[0] - dock[0]) * t,
         0,
-        dock[2] + (exit[2] - dock[2]) * t,
+        dock[2] + (exit[2] - dock[2]) * t + queue,
       ] as World,
       heading,
       status: shipment.status,
@@ -418,4 +440,23 @@ export function incomingQcPlacement(config: FactoryDescriptor): World {
 export function quarantinePlacement(config: FactoryDescriptor): World {
   const [x, y] = planPosition(config, "QUARANTINE");
   return toWorld(x, y);
+}
+
+/**
+ * Giriş kaliteden üretime geçiş noktası.
+ *
+ * Onaylanan malzemenin hatta girdiği açıklık. Bu nokta planda yoktu ve
+ * kontrol edilen mal sanki havada üretime ışınlanıyordu.
+ */
+export function productionGatePlacement(config: FactoryDescriptor): World {
+  const [x, y] = planPosition(config, "PRODUCTION-GATE");
+  return toWorld(x, y);
+}
+
+/** Sevkiyat binasının yeri. */
+export function shippingBuildingPlacement(config: FactoryDescriptor): World {
+  const [x, y] = planPosition(config, "SHIPPING-YARD");
+  const [wx, , wz] = toWorld(x, y);
+  // Bina rampanın arkasında: taşıyıcı önünde yükleniyor.
+  return [wx - 6, 0, wz];
 }

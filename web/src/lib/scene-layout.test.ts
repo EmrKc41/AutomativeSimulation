@@ -10,9 +10,12 @@ import {
   machineSlot,
   placeAgvs,
   placeCarriers,
+  placeTrucks,
   placeUnits,
   planPosition,
+  productionGatePlacement,
   quarantinePlacement,
+  shippingBuildingPlacement,
   stationWorld,
   toWorld,
 } from "@/lib/scene-layout";
@@ -73,12 +76,13 @@ const config: FactoryDescriptor = {
   materials: [],
   workOrders: [],
   locations: {
-    "RECEIVING-DOCK": [0, 0],
-    "INCOMING-QC": [11, 0],
-    QUARANTINE: [11, 20],
-    "RAW-STOCK-A": [22, 0],
+    "RECEIVING-DOCK": [-20, 0],
+    "INCOMING-QC": [-2, 0],
+    "PRODUCTION-GATE": [8, 0],
+    QUARANTINE: [-2, 20],
+    "RAW-STOCK-A": [20, 0],
     "FINISHED-GOODS": [140, 0],
-    "SHIPPING-YARD": [165, 0],
+    "SHIPPING-YARD": [172, 0],
   },
   scenarios: [],
 };
@@ -220,8 +224,8 @@ describe("plan-to-world mapping", () => {
 
   test("a line-side bin resolves to the station it feeds", () => {
     expect(planPosition(config, "LINE-SIDE/PAINT-01")).toEqual([80, 0]);
-    // Depo artık 22'de: mal kabul (0) ve giriş kalite (11) ondan önce geliyor.
-    expect(planPosition(config, "RAW-STOCK-A")).toEqual([22, 0]);
+    // Depo 20'de: mal kabul (-20), giriş kalite (-2) ve geçiş (8) ondan önce.
+    expect(planPosition(config, "RAW-STOCK-A")).toEqual([20, 0]);
   });
 
   test("an unknown location falls back to the plan origin instead of throwing", () => {
@@ -494,10 +498,12 @@ describe("mal kabul, giriş kalite ve sevkiyat", () => {
     // yapmayacağı bir şey.
     const receiving = planPosition(config, "RECEIVING-DOCK")[0];
     const qc = planPosition(config, "INCOMING-QC")[0];
+    const gate = planPosition(config, "PRODUCTION-GATE")[0];
     const store = planPosition(config, "RAW-STOCK-A")[0];
 
     expect(receiving).toBeLessThan(qc);
-    expect(qc).toBeLessThan(store);
+    expect(qc).toBeLessThan(gate);
+    expect(gate).toBeLessThan(store);
   });
 
   test("quarantine sits beside incoming quality, not in front of receiving", () => {
@@ -531,8 +537,9 @@ describe("mal kabul, giriş kalite ve sevkiyat", () => {
   });
 
   test("the quality bench and the quarantine bay are placed where the plant says", () => {
-    expect(incomingQcPlacement(config)).toEqual(toWorld(11, 0));
-    expect(quarantinePlacement(config)).toEqual(toWorld(11, 20));
+    expect(incomingQcPlacement(config)).toEqual(toWorld(-2, 0));
+    expect(quarantinePlacement(config)).toEqual(toWorld(-2, 20));
+    expect(productionGatePlacement(config)).toEqual(toWorld(8, 0));
   });
 
   test("a carrier carries exactly the vehicles the shipment loaded", () => {
@@ -582,5 +589,113 @@ describe("mal kabul, giriş kalite ve sevkiyat", () => {
     expect(leaving).toBeDefined();
     // Çıkış +X yönünde: yola çıkan taşıyıcı sahadan uzaklaşmış olmalı.
     expect(leaving!.position[0]).toBeGreaterThan(waiting!.position[0]);
+  });
+});
+
+describe("yerleşim revizyonu: bağımsız alanlar, düz tırlar, tanımlı güzergâh", () => {
+  test("receiving is an area of its own, not folded into the production side", () => {
+    const inbound = ZONES.find((zone) => zone.id === "inbound")!;
+    const iqc = ZONES.find((zone) => zone.id === "iqc")!;
+
+    // Aradaki boşluk tırın manevra sahası. Bitişik olsalardı mal kabul,
+    // üretim alanının bir köşesi olurdu.
+    expect(inbound.rect[2]).toBeLessThan(iqc.rect[0]);
+    expect(iqc.rect[0] - inbound.rect[2]).toBeGreaterThanOrEqual(2);
+  });
+
+  test("the inbound truck stands straight, never at an angle", () => {
+    const placed = placeTrucks(
+      config,
+      frame({
+        trucks: [
+          {
+            id: "TIR-1",
+            materialId: "M",
+            batchId: "B",
+            quantity: 1,
+            status: "DOCKED",
+            dispatchedAt: 0,
+            dueAt: 8,
+            ticksRemaining: 1,
+            legTicks: 1,
+            progress: 0,
+            dockId: "RECEIVING-DOCK",
+            accepted: null,
+            completedAt: null,
+          },
+        ],
+      }),
+    );
+
+    // Bir tır rampaya dik yanaşır; çapraz duran tır dorseyi kapıya
+    // hizalayamaz.
+    expect(placed).toHaveLength(1);
+    expect(placed[0]!.heading).toBe(0);
+  });
+
+  test("the inbound truck drives straight in, so its path has no sideways jog", () => {
+    const arriving = (progress: number) =>
+      placeTrucks(
+        config,
+        frame({
+          trucks: [
+            {
+              id: "TIR-1",
+              materialId: "M",
+              batchId: "B",
+              quantity: 1,
+              status: "ARRIVING",
+              dispatchedAt: 0,
+              dueAt: 8,
+              ticksRemaining: 2,
+              legTicks: 4,
+              progress,
+              dockId: "RECEIVING-DOCK",
+              accepted: null,
+              completedAt: null,
+            },
+          ],
+        }),
+      )[0]!;
+
+    // Güzergâh tek eksende: X sabit, yalnızca Z değişiyor.
+    expect(arriving(0).position[0]).toBeCloseTo(arriving(1).position[0], 6);
+    expect(arriving(0).position[2]).not.toBeCloseTo(arriving(1).position[2], 6);
+  });
+
+  test("the outbound carrier faces right and leaves along the same straight line", () => {
+    const waiting = placeCarriers(
+      config,
+      frame({ shipments: [shipment({ status: "LOADING", productIds: ["CAR-1"] })] }),
+    )[0]!;
+    const leaving = placeCarriers(
+      config,
+      frame({
+        shipments: [shipment({ status: "IN_TRANSIT", productIds: ["CAR-1"], ticksRemaining: 1 })],
+      }),
+    )[0]!;
+
+    expect(waiting.heading).toBe(0);
+    expect(leaving.position[0]).toBeGreaterThan(waiting.position[0]);
+    // Düz çıkış: yanal kayma yok.
+    expect(leaving.position[2]).toBeCloseTo(waiting.position[2], 6);
+  });
+
+  test("shipping gets the same treatment as receiving: its own building, off the yard", () => {
+    const yard = toWorld(...planPosition(config, "SHIPPING-YARD"));
+    const building = shippingBuildingPlacement(config);
+
+    // Bina sahanın arkasında: taşıyıcı önünde yükleniyor, içinde değil.
+    expect(building[0]).toBeLessThan(yard[0]);
+    expect(building[2]).toBe(yard[2]);
+  });
+
+  test("the finished-goods store and the shipping yard are separate places", () => {
+    const store = planPosition(config, "FINISHED-GOODS")[0];
+    const yard = planPosition(config, "SHIPPING-YARD")[0];
+
+    // Sevkiyat bağımsız bir alan; depoyla iç içe olsaydı tır manevrası
+    // depo trafiğine girerdi.
+    expect(yard - store).toBeGreaterThanOrEqual(24);
   });
 });

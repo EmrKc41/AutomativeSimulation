@@ -19,10 +19,10 @@ import type { FactoryFrame, Machine, StationConfig } from "@/lib/contract";
 import {
   SCALE,
   ZONES,
+  planPosition,
   cameraBookmarks,
   placeAgvs,
   placeUnits,
-  planPosition,
   stationWorld,
   toWorld,
   type PlacedUnit,
@@ -97,6 +97,7 @@ export function FactoryScene(props: FactorySceneProps) {
 
       <Ground />
       <Zones showLabels={props.showLabels} />
+      <TugRoutes config={props.config} />
       <Conveyor config={props.config} />
       <Stations {...props} reducedMotion={reducedMotion} />
       <Units {...props} reducedMotion={reducedMotion} />
@@ -111,7 +112,6 @@ export function FactoryScene(props: FactorySceneProps) {
       <Suspense fallback={null}>
         <ShippingYard frame={props.frame} config={props.config} showLabels={props.showLabels} />
       </Suspense>
-      <Trucks frame={props.frame} config={props.config} />
 
       <BookmarkCamera
         config={props.config}
@@ -179,6 +179,47 @@ function Zones({ showLabels }: { showLabels: boolean }) {
           </group>
         );
       })}
+    </group>
+  );
+}
+
+/**
+ * Doli güzergâhları — zemine çizilmiş yol çizgileri.
+ *
+ * Talep açıktı: bu arabaların güzergâhı tanımsız kalmamalı. Motorda zaten
+ * tanımlı — her taşıma işi **iç lojistik deposundan ilgili hücrenin hat
+ * kenarına** gidiyor ve başka bir yere gitmiyor. Eksik olan, bunun planda
+ * görünmemesiydi.
+ *
+ * Gerçek bir fabrikada bu çizgiler zemine boyanır; hem güzergâhı tanımlar hem
+ * de yaya ile aracın nerede karşılaşacağını belli eder. Burada aynı işi
+ * yapıyorlar: bir doli bu çizginin dışına çıkmaz.
+ */
+function TugRoutes({ config }: { config: FactoryDescriptor }) {
+  const [storeX] = toWorld(...planPosition(config, "RAW-STOCK-A"));
+
+  // Ana koridor deponun önünden hattın sonuna kadar; ondan her hücreye bir
+  // sapma çıkıyor.
+  const targets = config.stations
+    .filter((station) => config.line.route.includes(station.id))
+    .map((station) => toWorld(station.position[0], station.position[1]));
+  const lastX = targets.at(-1)?.[0] ?? storeX;
+  // Koridor hattan ayrı: aynı hizada olsaydı doli ile araç aynı yerden
+  // geçerdi ve bu, sahada ilk kaldırılacak şeydir.
+  const [, , aisleZ] = toWorld(0, 18);
+
+  return (
+    <group>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[(storeX + lastX) / 2, 0.015, aisleZ]}>
+        <planeGeometry args={[lastX - storeX + 4, 0.5]} />
+        <meshBasicMaterial color={TONE.logistics.hex} transparent opacity={0.28} />
+      </mesh>
+      {targets.map(([x, , z], index) => (
+        <mesh key={index} rotation={[-Math.PI / 2, 0, 0]} position={[x, 0.015, (aisleZ + z) / 2]}>
+          <planeGeometry args={[0.5, Math.abs(aisleZ - z)]} />
+          <meshBasicMaterial color={TONE.logistics.hex} transparent opacity={0.22} />
+        </mesh>
+      ))}
     </group>
   );
 }
@@ -610,60 +651,43 @@ function UnitMesh({
   );
 }
 
+/**
+ * Doli arabaları — iç lojistik taşıma arabaları.
+ *
+ * Hücrelere parça besleyen şey bunlar. Güzergâh rastgele değil ve hep aynı
+ * yönde: **iç lojistik deposu → ilgili hücrenin hat kenarı**. Bunu motor
+ * belirliyor (`assignMoveTasks`), sahne yalnızca çiziyor — yani bir doli asla
+ * gitmesi gereken yerden başka bir yere gitmiyor.
+ *
+ * Önceden düz bir kutuydu. Araba, çeki oku ve tekerlekleriyle araba.
+ */
 function Agvs({ frame, config }: { frame: FactoryFrame; config: FactoryDescriptor }) {
   const placed = useMemo(() => placeAgvs(config, frame), [config, frame]);
 
   return (
-    <group>
-      {placed.map((agv) => (
-        <group key={agv.id} position={agv.position} rotation={[0, agv.heading, 0]}>
-          <mesh>
-            <boxGeometry args={[0.7, 0.16, 0.5]} />
-            <meshStandardMaterial
-              color={agv.moving ? TONE.logistics.hex : "#334155"}
-              roughness={0.5}
-              metalness={0.3}
-            />
-          </mesh>
-          {agv.loaded ? (
-            <mesh position={[0, 0.22, 0]}>
-              <boxGeometry args={[0.42, 0.28, 0.38]} />
-              <meshStandardMaterial color="#8b5cf6" roughness={0.7} />
-            </mesh>
-          ) : null}
-        </group>
-      ))}
-    </group>
+    <Suspense fallback={null}>
+      <group>
+        {placed.map((agv) => (
+          <group key={agv.id} position={agv.position} rotation={[0, agv.heading, 0]}>
+            <TugCart />
+            {agv.loaded ? (
+              <mesh position={[0, 0.62 * ASSET_SCALE, 0]}>
+                <boxGeometry args={[1.3 * ASSET_SCALE, 0.7 * ASSET_SCALE, 0.9 * ASSET_SCALE]} />
+                {/* Yük lojistik mavisi: hareket eden malzeme, makine durumu
+                    değil. */}
+                <meshStandardMaterial color={TONE.logistics.hex} roughness={0.6} metalness={0.2} />
+              </mesh>
+            ) : null}
+          </group>
+        ))}
+      </group>
+    </Suspense>
   );
 }
 
-/** One carrier per shipment being loaded or dispatched from the yard. */
-function Trucks({ frame, config }: { frame: FactoryFrame; config: FactoryDescriptor }) {
-  const yard = frame.shipments
-    .filter((shipment) => shipment.status === "LOADING" || shipment.status === "DISPATCHED")
-    .slice(-2);
-  const [planX, planY] = planPosition(config, "SHIPPING-YARD");
-  const [x, , z] = toWorld(planX, planY);
-
-  return (
-    <group>
-      {yard.map((shipment, lane) => (
-        <group key={shipment.id} position={[x, 0, z + lane * 2.6 - 2.6]}>
-          <mesh position={[-2.6, 0.5, 0]}>
-            <boxGeometry args={[1, 1, 1.1]} />
-            <meshStandardMaterial color="#334155" roughness={0.6} metalness={0.3} />
-          </mesh>
-          <mesh position={[0, 0.55, 0]}>
-            <boxGeometry args={[4, 0.2, 1.3]} />
-            <meshStandardMaterial
-              color={shipment.status === "DISPATCHED" ? TONE.logistics.hex : "#475569"}
-              roughness={0.6}
-            />
-          </mesh>
-        </group>
-      ))}
-    </group>
-  );
+function TugCart() {
+  const model = useModel(MODEL.tugCart);
+  return <primitive object={model} scale={ASSET_SCALE} />;
 }
 
 // ---------------------------------------------------------------------------
