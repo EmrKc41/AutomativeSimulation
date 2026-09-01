@@ -22,7 +22,9 @@ import {
   ZONES,
   planPosition,
   cameraBookmarks,
+  aisleZ,
   cameraFarPlane,
+  carrierRoute,
   maxCameraDistance,
   truckRoute,
   sceneDepth,
@@ -111,12 +113,22 @@ export function FactoryScene(props: FactorySceneProps) {
       {/* Mal kabul: rampa ve gelen tırlar. Blender'da üretilmiş modeller,
           motorun yayınladığı tır durumundan sürülüyor. */}
       <Suspense fallback={null}>
-        <ReceivingYard frame={props.frame} config={props.config} showLabels={props.showLabels} />
+        <ReceivingYard
+          frame={props.frame}
+          config={props.config}
+          showLabels={props.showLabels}
+          reducedMotion={reducedMotion}
+        />
       </Suspense>
       {/* Sevkiyat: bitmiş araçları alıp götüren oto taşıyıcılar. Üstündeki
           araç sayısı sevkiyatın gerçek yük listesi kadar. */}
       <Suspense fallback={null}>
-        <ShippingYard frame={props.frame} config={props.config} showLabels={props.showLabels} />
+        <ShippingYard
+          frame={props.frame}
+          config={props.config}
+          showLabels={props.showLabels}
+          reducedMotion={reducedMotion}
+        />
       </Suspense>
 
       <BookmarkCamera
@@ -210,19 +222,21 @@ function TugRoutes({ config }: { config: FactoryDescriptor }) {
     .filter((station) => config.line.route.includes(station.id))
     .map((station) => toWorld(station.position[0], station.position[1]));
   const lastX = targets.at(-1)?.[0] ?? storeX;
-  // Koridor hattan ayrı: aynı hizada olsaydı doli ile araç aynı yerden
-  // geçerdi ve bu, sahada ilk kaldırılacak şeydir.
-  const [, , aisleZ] = toWorld(0, 18);
+  // Koridorun yeri `scene-layout` içinde tanımlı, burada değil: çizgiyi bir
+  // yerde, arabaları başka bir yerde konumlandırmak tam olarak buradaki
+  // hataydı — zemindeki koridor boş duruyor, arabalar hattın dibinden
+  // geçiyordu.
+  const koridorZ = aisleZ();
 
   return (
     <group>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[(storeX + lastX) / 2, 0.015, aisleZ]}>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[(storeX + lastX) / 2, 0.015, koridorZ]}>
         <planeGeometry args={[lastX - storeX + 4, 0.5]} />
         <meshBasicMaterial color={TONE.logistics.hex} transparent opacity={0.28} />
       </mesh>
       {targets.map(([x, , z], index) => (
-        <mesh key={index} rotation={[-Math.PI / 2, 0, 0]} position={[x, 0.015, (aisleZ + z) / 2]}>
-          <planeGeometry args={[0.5, Math.abs(aisleZ - z)]} />
+        <mesh key={index} rotation={[-Math.PI / 2, 0, 0]} position={[x, 0.015, (koridorZ + z) / 2]}>
+          <planeGeometry args={[0.5, Math.abs(koridorZ - z)]} />
           <meshBasicMaterial color={TONE.logistics.hex} transparent opacity={0.22} />
         </mesh>
       ))}
@@ -243,12 +257,18 @@ function TugRoutes({ config }: { config: FactoryDescriptor }) {
  */
 function TruckRoad({ config }: { config: FactoryDescriptor }) {
   const [gate, corner, dock] = truckRoute(config);
-  if (!gate || !corner || !dock) return null;
+  const [yard, exit] = carrierRoute(config);
+  if (!gate || !corner || !dock || !yard || !exit) return null;
 
   const genislik = 3.4;
 
   return (
     <group>
+      {/* Çıkış yolu: sevkiyat sahasından çıkış kapısına ve dışarı. */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[(yard[0] + exit[0]) / 2, 0.012, yard[2]]}>
+        <planeGeometry args={[Math.abs(exit[0] - yard[0]) + genislik, genislik]} />
+        <meshBasicMaterial color={TONE.logistics.hex} transparent opacity={0.16} />
+      </mesh>
       {/* Giriş yolu: kapıdan köşeye, Z ekseninde. */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[gate[0], 0.012, (gate[2] + corner[2]) / 2]}>
         <planeGeometry args={[genislik, Math.abs(gate[2] - corner[2]) + genislik]} />

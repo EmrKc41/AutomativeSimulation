@@ -10,6 +10,7 @@ import type {
   ProductUnit,
   ScenarioKind,
   Shipment,
+  ShipmentPlanConfig,
   StationConfig,
   WorkOrder,
 } from "@/lib/contract";
@@ -45,6 +46,9 @@ export interface FactoryDescriptor {
   readonly stations: readonly StationConfig[];
   readonly materials: readonly MaterialConfig[];
   readonly workOrders: readonly WorkOrder[];
+  // Sunucu bunu baştan beri gönderiyordu, tip bilmiyordu. Sahne sevkiyatın
+  // toplam yol süresini buradan okuyor.
+  readonly shipmentPlan: ShipmentPlanConfig;
   readonly locations: Readonly<Record<string, readonly [number, number]>>;
   readonly scenarios: readonly ScenarioDescriptor[];
 }

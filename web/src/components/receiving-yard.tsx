@@ -5,10 +5,11 @@ import { useMemo } from "react";
 
 import type { FactoryDescriptor } from "@/lib/api";
 import type { FactoryFrame } from "@/lib/contract";
-import { ASSET_SCALE, MODEL, useModel } from "@/components/factory-models";
+import { ASSET_SCALE, MODEL, SecurityGate, useModel } from "@/components/factory-models";
 import {
   dockPlacement,
   incomingQcPlacement,
+  entryGateOpenness,
   placeTrucks,
   productionGatePlacement,
   quarantinePlacement,
@@ -34,10 +35,12 @@ export function ReceivingYard({
   frame,
   config,
   showLabels,
+  reducedMotion,
 }: {
   frame: FactoryFrame;
   config: FactoryDescriptor;
   showLabels: boolean;
+  reducedMotion: boolean;
 }) {
   const trucks = useMemo(() => placeTrucks(config, frame), [config, frame]);
   const dock = useMemo(() => dockPlacement(config), [config]);
@@ -45,13 +48,21 @@ export function ReceivingYard({
   const quarantine = useMemo(() => quarantinePlacement(config), [config]);
   const gate = useMemo(() => productionGatePlacement(config), [config]);
   const security = useMemo(() => securityGatePlacement(config), [config]);
+  // Bariyerin açıklığı uydurulmuyor: yolda kapıya yaklaşan tırın konumundan
+  // hesaplanıyor, yani kol gerçekten geçen bir araç için kalkıyor.
+  const gateOpen = useMemo(() => entryGateOpenness(config, frame), [config, frame]);
 
   // Karantinadaki parti sayısı — boşsa alan da boş görünmeli.
   const quarantined = frame.inventory.filter((balance) => balance.status === "QUARANTINE").length;
 
   return (
     <group>
-      <SecurityGate position={security} />
+      <SecurityGate
+        position={security}
+        passageAxis="z"
+        openness={gateOpen}
+        reducedMotion={reducedMotion}
+      />
       <Dock position={dock} />
       <IncomingQc position={qc} />
       <ProductionGate position={gate} />
@@ -129,28 +140,6 @@ function Quarantine({
         />
       ))}
     </group>
-  );
-}
-
-/**
- * Güvenlik kapısı — tesisin sınırı.
- *
- * Tır fabrikaya buradan giriyor. Kapı olmadan sahnede bir sınır yoktu ve tır
- * doğrudan mal kabulün önünde beliriyordu; oysa sahada hiçbir araç kapıda
- * durmadan içeri alınmaz.
- *
- * Geçiş ekseni +X modellendi, tır ise buradan −Z yönünde ilerliyor: kapı,
- * geçtiği yöne dik durması için çeyrek tur döndürülüyor.
- */
-function SecurityGate({ position }: { position: readonly [number, number, number] }) {
-  const model = useModel(MODEL.securityGate);
-  return (
-    <primitive
-      object={model}
-      position={[position[0], 0, position[2]]}
-      scale={ASSET_SCALE}
-      rotation={[0, Math.PI / 2, 0]}
-    />
   );
 }
 

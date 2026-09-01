@@ -34,6 +34,7 @@ export type {
   RuntimeStatus,
   ScenarioKind,
   Shipment,
+  ShipmentPlanConfig,
   ShipmentStatus,
   StationConfig,
   WorkOrder,

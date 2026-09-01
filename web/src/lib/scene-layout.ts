@@ -74,14 +74,85 @@ export function shipmentSlot(config: FactoryDescriptor, lane: number, index: num
 }
 
 /**
- * AGVs run in an aisle in front of the line rather than through the machines.
- * Their position along a leg comes from `Agv.progress`, which the engine
- * publishes — the scene interpolates, it does not guess.
+ * Doli koridorunun plan üzerindeki Y'si.
+ *
+ * Hattan ayrı: aynı hizada olsaydı doli ile araç aynı yerden geçerdi ve bu,
+ * sahada ilk kaldırılacak şeydir. Zemine çizilen yol da bu değeri kullanıyor,
+ * çünkü **çizilen yol ile gidilen yol aynı olmak zorunda** — ayrıldıklarında
+ * koridor boş görünüyor, arabalar ise makinelerin arasında kayboluyordu.
  */
+export const AISLE_PLAN_Y = 18;
+
+/** Doli arabasının bir konumdaki duruş noktası: hücrenin/deponun hemen önü. */
 export function agvWorld(config: FactoryDescriptor, location: string): World {
   const [planX, planY] = planPosition(config, location);
   const [x, , z] = toWorld(planX, planY + 6);
   return [x, 0.18, z];
+}
+
+/** Koridorun dünya koordinatındaki Z'si. */
+export function aisleZ(): number {
+  return toWorld(0, AISLE_PLAN_Y)[2];
+}
+
+/**
+ * Doli arabasının izlediği yol: duraktan koridora, koridor boyunca, hedefe.
+ *
+ * Motor yalnızca "nereden nereye" ve "ne kadarı bitti" diyor; **hangi yoldan**
+ * gidildiği sahnenin işi. Önceki sürüm iki nokta arasında düz çizgi çekiyordu,
+ * yani araba makinelerin ve hattın üzerinden çapraz geçiyordu — üstelik zemine
+ * çizili koridorun tamamen dışından. Koridor boş duruyor, hareket ise
+ * görünmüyordu.
+ */
+function agvPath(from: World, to: World): readonly World[] {
+  const koridor = aisleZ();
+  return [from, [from[0], from[1], koridor], [to[0], to[1], koridor], to];
+}
+
+/**
+ * Çok parçalı bir yol üzerinde `t` oranındaki nokta ve o noktadaki yön.
+ *
+ * `t` parçalara **uzunlukları oranında** bölünüyor, yani araç köşelerde
+ * hızlanmıyor. Sıfır uzunluklu parçalar atlanıyor: duraklar zaten koridorda
+ * olduğunda yol iki noktaya iniyor ve bölme sıfıra düşerdi.
+ */
+function alongPath(points: readonly World[], t: number): { position: World; heading: number } {
+  const legs: { from: World; to: World; length: number }[] = [];
+  let total = 0;
+  for (let i = 0; i + 1 < points.length; i += 1) {
+    const from = points[i]!;
+    const to = points[i + 1]!;
+    const length = Math.hypot(to[0] - from[0], to[2] - from[2]);
+    if (length < 1e-6) continue;
+    legs.push({ from, to, length });
+    total += length;
+  }
+
+  const first = points[0]!;
+  if (legs.length === 0 || total === 0) return { position: first, heading: 0 };
+
+  let kalan = Math.max(0, Math.min(1, t)) * total;
+  for (const leg of legs) {
+    if (kalan > leg.length) {
+      kalan -= leg.length;
+      continue;
+    }
+    const oran = kalan / leg.length;
+    return {
+      position: [
+        leg.from[0] + (leg.to[0] - leg.from[0]) * oran,
+        leg.from[1],
+        leg.from[2] + (leg.to[2] - leg.from[2]) * oran,
+      ],
+      heading: Math.atan2(leg.to[0] - leg.from[0], leg.to[2] - leg.from[2]),
+    };
+  }
+
+  const son = legs[legs.length - 1]!;
+  return {
+    position: son.to,
+    heading: Math.atan2(son.to[0] - son.from[0], son.to[2] - son.from[2]),
+  };
 }
 
 export interface Zone {
@@ -181,6 +252,8 @@ export function overviewExtent(config: FactoryDescriptor): readonly World[] {
   }
   // Tırın yolu: güvenlik kapısı, dönüş köşesi ve rampa.
   points.push(gateWorld(config), turnWorld(config), dockWorld(config));
+  // Çıkış yolu: sevkiyat sahası, çıkış kapısı ve dışarısı.
+  points.push(...carrierRoute(config), exitGatePlacement(config));
   return points;
 }
 
@@ -247,6 +320,26 @@ function receivingView(config: FactoryDescriptor): { position: World; target: Wo
   };
 }
 
+/**
+ * Sevkiyat görünümü: sahadan çıkış kapısına kadar bütün çıkış.
+ *
+ * Mal kabulle aynı mantık, ters yön. Yalnızca rampaya bakan bir kamera
+ * güvenlik kapısını kadraja hiç almıyordu; oysa "sevkiyat" dediğimiz şey
+ * yükleme + çıkış yolu + kapının tamamı.
+ */
+function shippingView(config: FactoryDescriptor): { position: World; target: World } {
+  const [yard, exit] = carrierRoute(config);
+  if (!yard || !exit) return { position: [0, 10, 20], target: [0, 0, 0] };
+
+  const centreX = (yard[0] + exit[0]) / 2;
+  const yayilim = Math.abs(exit[0] - yard[0]);
+
+  return {
+    position: [centreX + yayilim * 0.3, yayilim * 0.8, yard[2] + yayilim * 1.05],
+    target: [centreX, 0.6, yard[2]],
+  };
+}
+
 /** Named viewpoints an operator would actually ask for. */
 export function cameraBookmarks(
   config: FactoryDescriptor,
@@ -260,22 +353,6 @@ export function cameraBookmarks(
     const [x, , z] = stationWorld(config, stationId);
     return [x, 0.6, z];
   };
-  // Mal kabul ve sevkiyat istasyon değil, adlandırılmış birer alan. Kamera
-  // noktaları elle yazılıydı ve alanlar taşındığında geride kaldı; artık
-  // tesisin kendi konum tablosundan okunuyor.
-  // Mesafeler bilerek büyük: bina cepheleri ve tır, konumların ölçeğine göre
-  // iri modellendi (bkz. `ASSET_SCALE`), yakın bir kamera nesnenin *içinde*
-  // kalıyor. Bu, ölçek uyuşmazlığını çözmüyor, yalnızca görünümü kullanılabilir
-  // tutuyor.
-  const area = (location: string, offset: World) => {
-    const [planX, planY] = planPosition(config, location);
-    const [x, , z] = toWorld(planX, planY);
-    return {
-      position: [x + offset[0], offset[1], z + offset[2]] as World,
-      target: [x, 0.6, z] as World,
-    };
-  };
-
   return [
     overviewBookmark(config, aspect),
     { id: "receiving", label: "Mal Kabul", ...receivingView(config) },
@@ -305,7 +382,7 @@ export function cameraBookmarks(
       position: look("REWORK-01", [-4, 5, 8]),
       target: at("REWORK-01"),
     },
-    { id: "shipping", label: "Sevkiyat", ...area("SHIPPING-YARD", [12, 16, 30]) },
+    { id: "shipping", label: "Sevkiyat", ...shippingView(config) },
   ];
 }
 
@@ -445,17 +522,13 @@ export function placeAgvs(config: FactoryDescriptor, frame: FactoryFrame): Place
     const from = agvWorld(config, agv.fromLocation);
     const to = agvWorld(config, agv.toLocation);
     const t = agv.status === "IDLE" ? 0 : Math.max(0, Math.min(1, agv.progress));
-    const position: World = [
-      from[0] + (to[0] - from[0]) * t,
-      from[1],
-      from[2] + (to[2] - from[2]) * t,
-    ];
+    const { position, heading } = alongPath(agvPath(from, to), t);
     return {
       id: agv.id,
       position,
       loaded: agv.status === "TO_DROP" || agv.status === "UNLOADING",
       moving: agv.status === "TO_PICKUP" || agv.status === "TO_DROP",
-      heading: Math.atan2(to[0] - from[0], to[2] - from[2]),
+      heading,
     };
   });
 }
@@ -640,9 +713,69 @@ function carrierDock(config: FactoryDescriptor): World {
  * üzerinde düz çıkıyor. Önceki sürümde çıkış hem sağda hem ileride olduğu için
  * taşıyıcı çapraz duruyordu.
  */
+const EXIT_ROAD_X = 34;
+
 function carrierExit(config: FactoryDescriptor): World {
   const [x, , z] = carrierDock(config);
-  return [x + 34, 0, z];
+  return [x + EXIT_ROAD_X, 0, z];
+}
+
+/**
+ * Çıkış güvenlik kapısı.
+ *
+ * Girişte olan çıkışta da olmalı: bir fabrikadan araç, kapıda durmadan
+ * çıkmaz. Çıkış yolunun üzerinde, sahanın dışında.
+ */
+export function exitGatePlacement(config: FactoryDescriptor): World {
+  const [x, , z] = carrierDock(config);
+  return [x + EXIT_ROAD_X * 0.78, 0, z];
+}
+
+/** Taşıyıcının çıkış yolu: rampadan kapıya ve dışarı. */
+export function carrierRoute(config: FactoryDescriptor): readonly World[] {
+  return [carrierDock(config), carrierExit(config)];
+}
+
+/**
+ * Kapının açık olması gereken an.
+ *
+ * "Geçiş onayı" bir buton değil, aracın kapıdan geçtiği an: bariyer araç
+ * yaklaşırken kalkar, geçtikten sonra iner. Oran 0..1 — sahne bunu kolun
+ * açısına çeviriyor.
+ */
+function kapiAcikligi(mesafe: number, pencere: number): number {
+  return Math.max(0, Math.min(1, 1 - Math.abs(mesafe) / pencere));
+}
+
+/** Geçiş penceresi: aracın kapının bu kadar yakınında olması bariyeri kaldırır. */
+const GATE_WINDOW = 14;
+
+/**
+ * Giriş bariyeri ne kadar açık?
+ *
+ * Yolda kapıya yaklaşan bir tır varsa kalkıyor. Birden fazla tır varsa en
+ * yakın olanı belirliyor — kapı bir tanesi için açıksa açıktır.
+ */
+export function entryGateOpenness(config: FactoryDescriptor, frame: FactoryFrame): number {
+  const gate = gateWorld(config);
+  let acik = 0;
+  for (const truck of frame.trucks) {
+    if (truck.status !== "ARRIVING") continue;
+    const { position } = truckOnRoute(config, Math.max(0, Math.min(1, truck.progress)));
+    acik = Math.max(acik, kapiAcikligi(position[2] - gate[2], GATE_WINDOW));
+  }
+  return acik;
+}
+
+/** Çıkış bariyeri: sahadan çıkan bir taşıyıcı kapıya yaklaştığında kalkıyor. */
+export function exitGateOpenness(config: FactoryDescriptor, frame: FactoryFrame): number {
+  const gate = exitGatePlacement(config);
+  let acik = 0;
+  for (const carrier of placeCarriers(config, frame)) {
+    if (carrier.status !== "DISPATCHED" && carrier.status !== "IN_TRANSIT") continue;
+    acik = Math.max(acik, kapiAcikligi(carrier.position[0] - gate[0], GATE_WINDOW));
+  }
+  return acik;
 }
 
 /**
@@ -671,8 +804,14 @@ export function placeCarriers(config: FactoryDescriptor, frame: FactoryFrame): P
   return visible.map((shipment, index) => {
     // Yolda olan taşıyıcı kalan süresine göre çıkışa doğru ilerliyor.
     const leaving = shipment.status === "DISPATCHED" || shipment.status === "IN_TRANSIT";
-    const transit = Math.max(1, config.line.shiftTicks > 0 ? shipment.ticksRemaining : 1);
-    const t = leaving ? Math.max(0, Math.min(1, 1 - shipment.ticksRemaining / (transit + 1))) : 0;
+    // Toplam yol süresi sevkiyat planından geliyor.
+    //
+    // Önceden bölen olarak **kalan süre** kullanılıyordu; o zaman ilerleme
+    // 1 − r/(r+1) oluyor, yani 12 dakikalık yolun başında 0,08, sonunda 1.
+    // Taşıyıcı yolun neredeyse tamamında yerinde duruyor, son dakikada
+    // fırlıyordu — üstelik çıkış kapısının önünden görülemeyecek kadar hızlı.
+    const transit = Math.max(1, config.shipmentPlan.transitTicks);
+    const t = leaving ? Math.max(0, Math.min(1, 1 - shipment.ticksRemaining / transit)) : 0;
 
     // Rampada bekleyenler arka arkaya dizilsin, üst üste binmesin. Kapılar
     // Z ekseni boyunca sıralandığı için sıra da o yönde.

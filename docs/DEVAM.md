@@ -50,7 +50,7 @@ npx tsc --noEmit && npx eslint . && npx prettier --check . && npm test
 cd web && npx tsc --noEmit && npx eslint . && npm test && npm run build
 ```
 
-Beklenen: motorda **169 test**, web tarafında **53 test**, hepsi geçer.
+Beklenen: motorda **169 test**, web tarafında **59 test**, hepsi geçer.
 
 ---
 
@@ -643,6 +643,41 @@ göstermekti.
 
 Doğrulandı (tarayıcıda, ekran görüntüsüyle): 00:17'de tır yolda, burnu gidiş
 yönünde; 00:19'da sağa dönmüş, mal kabule yanaşıyor.
+
+### Çıkış kapısı, bariyer animasyonu, doli koridoru
+
+Kullanıcı üç şey istedi: aynı güvenlik kapısı **çıkışa** da; tırların geçiş
+onayında **bariyer açılsın**; ve **iç lojistik hareketleri görünmüyor**.
+
+**Bariyer ayrı bir varlığa çıkarıldı** (`bariyer`), menteşesi orijinde. Kapıda
+yalnızca mil ve kaidesi kaldı. Sahne kolu menteşeden döndürüyor: `openness` 0
+iken yatay (kapalı), 1 iken dik (açık). Bu değer uydurulmuyor — motorun
+yayınladığı araç konumundan hesaplanıyor, yani kol gerçekten geçen bir araç
+için kalkıyor. Ortada araç yokken kalkan bir bariyer, sahnedeki her nesnenin
+bir karşılığı olması kuralını bozardı.
+
+**Çıkış kapısı** girişle aynı varlık, çıkış yolunun üzerinde. Bir fabrikadan
+araç kapıda durmadan çıkmaz; yalnızca girişte kapı olsaydı tesisin bir tarafı
+çitsiz kalırdı. "Sevkiyat" görünümü de artık çıkışın tamamını çerçeveliyor.
+
+**İç lojistik görünmüyordu, çünkü çizilen yol ile gidilen yol farklıydı.**
+Koridor zemine plan y=18'e çiziliyordu; arabalar ise hücrenin 6 birim önünden,
+iki durak arasında **düz çizgi** hâlinde gidiyordu. Yani işaretli koridor hep
+boş, hareket ise makinelerin ve hattın üzerinden geçiyor, gözden kaçıyordu.
+Artık koridorun yeri tek bir yerde tanımlı (`AISLE_PLAN_Y`) ve hem çizgi hem
+arabalar onu kullanıyor; güzergâh üç parça: duraktan koridora, koridor boyunca,
+hedefe.
+
+Bunu yaparken **taşıyıcının çıkış hareketinde** bir hata daha çıktı: ilerleme,
+toplam yol süresi yerine **kalan süreye** bölünüyordu (`1 − r/(r+1)`). 12
+dakikalık yolun başında 0,08, sonunda 1 — taşıyıcı yolun neredeyse tamamında
+yerinde duruyor, son dakikada fırlıyordu. Üstelik çıkış kapısının önünden
+görülemeyecek kadar hızlı. Toplam süre artık sevkiyat planından okunuyor;
+`FactoryDescriptor` tipinde `shipmentPlan` eksikti, sunucu baştan beri
+gönderiyordu.
+
+Doğrulandı (tarayıcıda): 00:16'da tır kapıda ve **bariyer kalkık**; 00:21'de tır
+rampada ve **bariyer inmiş**.
 
 ### Sırada ne var
 

@@ -1,14 +1,27 @@
 import { describe, expect, test } from "vitest";
 
 import type { FactoryDescriptor } from "@/lib/api";
-import type { Agv, FactoryFrame, Machine, ProductUnit, Shipment } from "@/lib/contract";
+import type {
+  Agv,
+  FactoryFrame,
+  InboundTruck,
+  Machine,
+  ProductUnit,
+  Shipment,
+} from "@/lib/contract";
 import {
-  SCALE,
   SCENE_FOV_DEG,
   ZONES,
   bufferSlot,
   maxCameraDistance,
   overviewExtent,
+  AISLE_PLAN_Y,
+  agvWorld,
+  aisleZ,
+  carrierRoute,
+  entryGateOpenness,
+  exitGateOpenness,
+  exitGatePlacement,
   securityGatePlacement,
   truckRoute,
   cameraBookmarks,
@@ -81,6 +94,14 @@ const config: FactoryDescriptor = {
   ],
   materials: [],
   workOrders: [],
+  shipmentPlan: {
+    customer: "EU-DEALER-NETWORK",
+    destination: "Bremerhaven",
+    vehicle: "Oto Taşıyıcı",
+    capacity: 4,
+    loadingTicks: 3,
+    transitTicks: 12,
+  },
   locations: {
     "RECEIVING-DOCK": [-20, 0],
     "INCOMING-QC": [-2, 0],
@@ -559,16 +580,32 @@ describe("scene vocabulary", () => {
    * bir alanın kamerası artık tesisin konum tablosundan okunduğu için elle
    * yazılmış bir sayı geride kalamaz.
    */
-  test("the shipping view actually looks at the shipping yard", () => {
+  /**
+   * Sevkiyat görünümü de çıkışın tamamını göstermeli: saha, yol, çıkış kapısı.
+   * Mal kabulle aynı gereksinim, ters yön.
+   */
+  test("the shipping view frames the whole exit, yard to gate", () => {
     const mark = cameraBookmarks(config).find((candidate) => candidate.id === "shipping")!;
-    const [x, , z] = toWorld(...planPosition(config, "SHIPPING-YARD"));
 
-    expect(mark.target[0]).toBeCloseTo(x, 6);
-    expect(mark.target[2]).toBeCloseTo(z, 6);
-    // Yakın plan: alanı dolduracak kadar yakın, içine girmeyecek kadar uzak.
-    const distance = Math.hypot(mark.position[0] - x, mark.position[1], mark.position[2] - z);
-    expect(distance).toBeGreaterThan(4 * SCALE);
-    expect(distance).toBeLessThan(40);
+    const forward = normalise(subtract(mark.target, mark.position));
+    const right = normalise(cross(forward, [0, 1, 0]));
+    const up = cross(right, forward);
+    const halfV = Math.tan((SCENE_FOV_DEG / 2) * (Math.PI / 180));
+    const halfH = Math.tan(Math.atan(halfV * (16 / 9)));
+
+    for (const point of [...carrierRoute(config), exitGatePlacement(config)]) {
+      const v = subtract(point, mark.position);
+      const depth = dot(v, forward);
+      const nerede = `[${point[0].toFixed(1)}, ${point[2].toFixed(1)}]`;
+
+      expect(depth, `${nerede} kameranın arkasında`).toBeGreaterThan(0);
+      expect(Math.abs(dot(v, right)) / depth, `${nerede} yanlardan taşıyor`).toBeLessThanOrEqual(
+        halfH,
+      );
+      expect(Math.abs(dot(v, up)) / depth, `${nerede} üstten/alttan taşıyor`).toBeLessThanOrEqual(
+        halfV,
+      );
+    }
   });
 
   /**
@@ -895,6 +932,180 @@ describe("yerleşim revizyonu: bağımsız alanlar, düz tırlar, tanımlı güz
     // Ve genel görünüm onu çerçevelemeli — kapsam hesabına dahil.
     const extent = overviewExtent(config);
     expect(extent).toContainEqual(gate);
+  });
+
+  /**
+   * Çıkışta da kapı olmalı.
+   *
+   * Bir fabrikadan araç kapıda durmadan çıkmaz. Yalnızca girişte kapı olsaydı
+   * tesisin bir tarafı çitsiz kalırdı.
+   */
+  test("carriers leave through a security gate too", () => {
+    const gate = exitGatePlacement(config);
+    const [yard, exit] = carrierRoute(config);
+
+    // Kapı çıkış yolunun üzerinde: sahadan sonra, dışarıdan önce.
+    expect(gate[0]).toBeGreaterThan(yard![0]);
+    expect(gate[0]).toBeLessThan(exit![0]);
+    expect(gate[2]).toBeCloseTo(yard![2], 6);
+  });
+
+  /**
+   * Bariyer gerçekten geçen bir araç için kalkmalı.
+   *
+   * Açıklık sahnede uydurulmuyor: motorun yayınladığı araç konumundan
+   * hesaplanıyor. Ortada araç yokken kalkan bir bariyer, sahnedeki her nesnenin
+   * bir karşılığı olması kuralını bozardı.
+   */
+  test("the entry barrier lifts only for a truck that is actually at the gate", () => {
+    const tir = (progress: number, status: InboundTruck["status"] = "ARRIVING") => ({
+      id: "TIR-1",
+      materialId: "M",
+      batchId: "B",
+      quantity: 1,
+      status,
+      dispatchedAt: 0,
+      dueAt: 8,
+      ticksRemaining: 2,
+      legTicks: 4,
+      progress,
+      dockId: "RECEIVING-DOCK",
+      accepted: null,
+      completedAt: null,
+    });
+
+    // Ortada tır yok: kapalı.
+    expect(entryGateOpenness(config, frame({ trucks: [] }))).toBe(0);
+
+    // Tır tam kapıda: açık.
+    expect(entryGateOpenness(config, frame({ trucks: [tir(0)] }))).toBeGreaterThan(0.9);
+
+    // Tır rampaya varmış, kapıyı çoktan geçmiş: kapalı.
+    expect(entryGateOpenness(config, frame({ trucks: [tir(1)] }))).toBe(0);
+
+    // Rampada bekleyen tır kapıyı açık tutmaz — kapıdan geçen bir araç değil.
+    expect(entryGateOpenness(config, frame({ trucks: [tir(0, "UNLOADING")] }))).toBe(0);
+  });
+
+  test("the exit barrier lifts only while a carrier is leaving", () => {
+    // Yükleme sürüyor, taşıyıcı hâlâ sahada: kapalı.
+    expect(
+      exitGateOpenness(
+        config,
+        frame({ shipments: [shipment({ status: "LOADING", productIds: ["CAR-1"] })] }),
+      ),
+    ).toBe(0);
+
+    // Yolun başında, henüz sahadan yeni çıkmış: kapı daha uzakta, kapalı.
+    expect(
+      exitGateOpenness(
+        config,
+        frame({
+          shipments: [
+            shipment({ status: "DISPATCHED", productIds: ["CAR-1"], ticksRemaining: 12 }),
+          ],
+        }),
+      ),
+    ).toBe(0);
+
+    // Kapıya varmış: açık.
+    const kapida = exitGateOpenness(
+      config,
+      frame({
+        shipments: [shipment({ status: "IN_TRANSIT", productIds: ["CAR-1"], ticksRemaining: 3 })],
+      }),
+    );
+    expect(kapida).toBeGreaterThan(0.5);
+  });
+
+  /**
+   * Taşıyıcı çıkış yolunu **düzgün** kat etmeli.
+   *
+   * İlerleme, toplam yol süresi yerine kalan süreye bölünüyordu: 1 − r/(r+1).
+   * 12 dakikalık yolun başında 0,08, sonunda 1. Yani taşıyıcı yolun neredeyse
+   * tamamında yerinde duruyor, son dakikada fırlıyordu — çıkış kapısının
+   * önünden görülemeyecek kadar hızlı.
+   */
+  test("a departing carrier crosses the exit road at a steady pace", () => {
+    const nerede = (ticksRemaining: number) =>
+      placeCarriers(
+        config,
+        frame({
+          shipments: [shipment({ status: "IN_TRANSIT", productIds: ["CAR-1"], ticksRemaining })],
+        }),
+      )[0]!.position[0];
+
+    const [yard, exit] = carrierRoute(config);
+    const yariYol = (yard![0] + exit![0]) / 2;
+
+    // Yolun yarısında, gerçekten yarı yolda.
+    expect(nerede(6)).toBeCloseTo(yariYol, 1);
+    // Ve her adımda aynı kadar ilerliyor.
+    const adimlar = [12, 9, 6, 3, 0].map(nerede);
+    const farklar = adimlar.slice(1).map((deger, i) => deger - adimlar[i]!);
+    for (const fark of farklar) {
+      expect(fark).toBeCloseTo(farklar[0]!, 6);
+    }
+  });
+
+  /**
+   * Doli arabaları zeminde çizili koridordan gitmeli.
+   *
+   * Çizgi bir yerde, arabalar başka yerdeydi: koridor plan y=18'e çiziliyor,
+   * arabalar ise hücrenin 6 birim önünden düz çizgi hâlinde geçiyordu. Yani
+   * işaretli yol hep boş, hareket ise makinelerin arasında görünmezdi.
+   */
+  test("tug carts travel along the aisle that is painted on the floor", () => {
+    const yolda = (progress: number) =>
+      placeAgvs(
+        config,
+        frame({
+          agvs: [
+            agv({
+              id: "AGV-1",
+              status: "TO_DROP",
+              fromLocation: "RAW-STOCK-A",
+              toLocation: "LINE-SIDE/ASSEMBLY-01",
+              progress,
+            }),
+          ],
+        }),
+      )[0]!;
+
+    // Yolun ortasında araba koridorda olmalı, iki durak arasındaki düz
+    // çizginin üzerinde değil.
+    expect(yolda(0.5).position[2]).toBeCloseTo(aisleZ(), 6);
+    expect(AISLE_PLAN_Y).toBeGreaterThan(8);
+
+    // Uçlar yerinde: depodan çıkıyor, hücrede bitiyor.
+    const depo = agvWorld(config, "RAW-STOCK-A");
+    const hucre = agvWorld(config, "LINE-SIDE/ASSEMBLY-01");
+    expect(yolda(0).position[0]).toBeCloseTo(depo[0], 6);
+    expect(yolda(0).position[2]).toBeCloseTo(depo[2], 6);
+    expect(yolda(1).position[0]).toBeCloseTo(hucre[0], 6);
+    expect(yolda(1).position[2]).toBeCloseTo(hucre[2], 6);
+  });
+
+  test("an idle tug cart stays put instead of jumping to the aisle", () => {
+    const bosta = placeAgvs(
+      config,
+      frame({
+        agvs: [
+          agv({
+            id: "AGV-1",
+            status: "IDLE",
+            fromLocation: "LINE-SIDE/PRESS-01",
+            toLocation: "LINE-SIDE/PRESS-01",
+            progress: 1,
+          }),
+        ],
+      }),
+    )[0]!;
+
+    const durak = agvWorld(config, "LINE-SIDE/PRESS-01");
+    expect(bosta.position[0]).toBeCloseTo(durak[0], 6);
+    expect(bosta.position[2]).toBeCloseTo(durak[2], 6);
+    expect(bosta.moving).toBe(false);
   });
 
   test("the outbound carrier faces right and leaves along the same straight line", () => {

@@ -3,10 +3,16 @@
 import { Html } from "@react-three/drei";
 import { useMemo } from "react";
 
-import { ASSET_SCALE, MODEL, useModel } from "@/components/factory-models";
+import { ASSET_SCALE, MODEL, SecurityGate, useModel } from "@/components/factory-models";
 import type { FactoryDescriptor } from "@/lib/api";
 import type { FactoryFrame } from "@/lib/contract";
-import { placeCarriers, shippingBuildingPlacement, type PlacedCarrier } from "@/lib/scene-layout";
+import {
+  exitGateOpenness,
+  exitGatePlacement,
+  placeCarriers,
+  shippingBuildingPlacement,
+  type PlacedCarrier,
+} from "@/lib/scene-layout";
 import { SHIPMENT_STATE, TONE } from "@/lib/status";
 
 /**
@@ -24,17 +30,32 @@ export function ShippingYard({
   frame,
   config,
   showLabels,
+  reducedMotion,
 }: {
   frame: FactoryFrame;
   config: FactoryDescriptor;
   showLabels: boolean;
+  reducedMotion: boolean;
 }) {
   const carriers = useMemo(() => placeCarriers(config, frame), [config, frame]);
   const building = useMemo(() => shippingBuildingPlacement(config), [config]);
+  const gate = useMemo(() => exitGatePlacement(config), [config]);
+  const gateOpen = useMemo(() => exitGateOpenness(config, frame), [config, frame]);
 
   return (
     <group>
       <ShippingBuilding position={building} />
+      {/*
+        Girişte olan çıkışta da var. Bir fabrikadan araç kapıda durmadan
+        çıkmaz; sahnede yalnızca giriş kapısı olsaydı tesisin bir tarafı
+        çitsiz kalırdı. Taşıyıcı +X yönünde çıktığı için geçiş ekseni X.
+      */}
+      <SecurityGate
+        position={gate}
+        passageAxis="x"
+        openness={gateOpen}
+        reducedMotion={reducedMotion}
+      />
       {carriers.map((carrier) => (
         <Carrier key={carrier.id} carrier={carrier} showLabels={showLabels} />
       ))}

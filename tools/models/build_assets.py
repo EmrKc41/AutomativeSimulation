@@ -1011,22 +1011,53 @@ def guvenlik(klasor):
     malzeme(pah(cati, 0.03), "guv-cati", KOYU, metal=0.3, puruz=0.7)
     parcalar.append(cati)
 
-    # Bariyer kolu — kapalı konumda, geçişin karşısında yatıyor
-    kol = kutu("bariyer", (0.16, 8.4, 0.22), konum=(0, 0.9, 1.15))
-    malzeme(kol, "guv-bariyer", (0.62, 0.18, 0.15), puruz=0.5)
-    parcalar.append(kol)
-
-    for y in (-2.4, 0.3, 3.0):
-        band = kutu("bariyer-band", (0.18, 0.7, 0.24), konum=(0, y, 1.15))
-        malzeme(band, "guv-band", (0.86, 0.86, 0.88), puruz=0.5)
-        parcalar.append(band)
-
+    # Bariyer menteşesi. Kolun kendisi ayrı bir varlık (`bariyer`), çünkü
+    # açılıp kapanması gerekiyor ve sahne onu bu noktadan döndürüyor.
     mil = silindir("bariyer-mil", 0.22, 0.5, konum=(0, 5.2, 1.15), donme=(0, math.pi / 2, 0))
     malzeme(mil, "guv-mil", CELIK, metal=0.7, puruz=0.4)
     parcalar.append(mil)
 
+    kaide = kutu("mil-kaide", (0.5, 0.5, 1.15), konum=(0, 5.2, 0.58))
+    malzeme(pah(kaide, 0.03), "guv-kaide", (0.24, 0.25, 0.31), metal=0.3, puruz=0.7)
+    parcalar.append(kaide)
+
     birlestir(parcalar, "Guvenlik")
     disa_aktar("guvenlik", klasor)
+
+
+def bariyer(klasor):
+    """
+    Bariyer kolu — kapıdan ayrı, çünkü açılıp kapanıyor.
+
+    Menteşe **orijinde**: sahne kolu buradan döndürüyor. Kol −Y yönünde
+    uzanıyor, yani kapalıyken geçişin karşısında yatıyor; açılırken X ekseni
+    etrafında yukarı kalkıyor.
+
+    Kırmızı-beyaz şeritler süs değil: bariyerin kapalı olduğunu uzaktan
+    okutan şey onlar.
+    """
+    temizle()
+    parcalar = []
+
+    uzunluk = 8.4
+    kol = kutu("kol", (0.16, uzunluk, 0.22), konum=(0, -uzunluk / 2, 0))
+    malzeme(kol, "bariyer-kol", (0.62, 0.18, 0.15), puruz=0.5)
+    parcalar.append(kol)
+
+    # Şeritler kol boyunca eşit aralıklı
+    for i in range(1, 6):
+        y = -uzunluk * i / 6
+        band = kutu("band", (0.18, uzunluk / 12, 0.24), konum=(0, y, 0))
+        malzeme(band, "bariyer-band", (0.86, 0.86, 0.88), puruz=0.5)
+        parcalar.append(band)
+
+    # Uçtaki karşı ağırlık — gerçek bariyerlerde kolu dengeleyen parça
+    agirlik = kutu("agirlik", (0.3, 0.5, 0.3), konum=(0, 0.45, 0))
+    malzeme(pah(agirlik, 0.03), "bariyer-agirlik", KOYU, metal=0.5, puruz=0.5)
+    parcalar.append(agirlik)
+
+    birlestir(parcalar, "Bariyer")
+    disa_aktar("bariyer", klasor)
 
 
 VARLIKLAR = {
@@ -1038,6 +1069,7 @@ VARLIKLAR = {
     "iqc-masa": kalite_masasi,
     "gecis": gecis,
     "guvenlik": guvenlik,
+    "bariyer": bariyer,
     "sevkiyat": sevkiyat_binasi,
     "doli": doli,
     # Faz 3 — depo

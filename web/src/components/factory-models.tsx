@@ -31,6 +31,7 @@ export const MODEL = {
   tugCart: "/models/doli.glb",
   dock: "/models/rampa.glb",
   securityGate: "/models/guvenlik.glb",
+  barrier: "/models/bariyer.glb",
   pallet: "/models/palet.glb",
   rack: "/models/raf.glb",
   conveyor: "/models/konveyor.glb",
@@ -296,3 +297,60 @@ export function Operator({ position }: { position: [number, number, number] }) {
 
 // Sahne açılırken hepsi bir kez indirilsin; istasyon görünür olduğunda beklenmesin.
 for (const url of Object.values(MODEL)) useGLTF.preload(url);
+
+/**
+ * Güvenlik kapısı ve bariyeri.
+ *
+ * Tesisin sınırı. Girişte ve çıkışta aynı kapı duruyor, çünkü bir fabrikadan
+ * araç kapıda durmadan **çıkmaz** da.
+ *
+ * Bariyer kolu ayrı bir varlık ve menteşesinden döndürülüyor. `openness` 0
+ * iken kol yatay — geçiş kapalı; 1 iken dik — geçiş açık. Bu değer sahnede
+ * uydurulmuyor: motorun yayınladığı araç konumundan hesaplanıyor, yani kol
+ * gerçekten geçen bir araç için kalkıyor.
+ *
+ * `passageAxis` aracın kapıdan hangi eksende geçtiğini söylüyor. Model +X'e
+ * göre yapıldı; Z ekseninde geçen bir kapı çeyrek tur dönüyor.
+ */
+export function SecurityGate({
+  position,
+  passageAxis,
+  openness,
+  reducedMotion,
+}: {
+  position: readonly [number, number, number];
+  passageAxis: "x" | "z";
+  openness: number;
+  reducedMotion: boolean;
+}) {
+  const gate = useModel(MODEL.securityGate);
+  const arm = useModel(MODEL.barrier);
+  const pivot = useRef<Group>(null);
+  const acik = useRef(0);
+
+  useFrame((_, delta) => {
+    const node = pivot.current;
+    if (!node) return;
+    // Bariyer bir anda zıplamaz; kalkması da inmesi de sürer.
+    acik.current = reducedMotion
+      ? openness
+      : acik.current + (openness - acik.current) * Math.min(1, delta * 3.5);
+    node.rotation.x = -(Math.PI / 2) * acik.current;
+  });
+
+  // Menteşe Blender'da (0, 5.2, 1.15); glTF Y-yukarı çevirisinden sonra
+  // (0, 1.15, -5.2). Kol bu noktadan dönüyor, kendi ortasından değil.
+  const hinge: [number, number, number] = [0, 1.15 * ASSET_SCALE, -5.2 * ASSET_SCALE];
+
+  return (
+    <group
+      position={[position[0], 0, position[2]]}
+      rotation={[0, passageAxis === "z" ? Math.PI / 2 : 0, 0]}
+    >
+      <primitive object={gate} scale={ASSET_SCALE} />
+      <group ref={pivot} position={hinge}>
+        <primitive object={arm} scale={ASSET_SCALE} />
+      </group>
+    </group>
+  );
+}
