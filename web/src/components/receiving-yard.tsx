@@ -12,6 +12,7 @@ import {
   placeTrucks,
   productionGatePlacement,
   quarantinePlacement,
+  securityGatePlacement,
   type PlacedTruck,
 } from "@/lib/scene-layout";
 import { TONE } from "@/lib/status";
@@ -43,12 +44,14 @@ export function ReceivingYard({
   const qc = useMemo(() => incomingQcPlacement(config), [config]);
   const quarantine = useMemo(() => quarantinePlacement(config), [config]);
   const gate = useMemo(() => productionGatePlacement(config), [config]);
+  const security = useMemo(() => securityGatePlacement(config), [config]);
 
   // Karantinadaki parti sayısı — boşsa alan da boş görünmeli.
   const quarantined = frame.inventory.filter((balance) => balance.status === "QUARANTINE").length;
 
   return (
     <group>
+      <SecurityGate position={security} />
       <Dock position={dock} />
       <IncomingQc position={qc} />
       <ProductionGate position={gate} />
@@ -126,6 +129,28 @@ function Quarantine({
         />
       ))}
     </group>
+  );
+}
+
+/**
+ * Güvenlik kapısı — tesisin sınırı.
+ *
+ * Tır fabrikaya buradan giriyor. Kapı olmadan sahnede bir sınır yoktu ve tır
+ * doğrudan mal kabulün önünde beliriyordu; oysa sahada hiçbir araç kapıda
+ * durmadan içeri alınmaz.
+ *
+ * Geçiş ekseni +X modellendi, tır ise buradan −Z yönünde ilerliyor: kapı,
+ * geçtiği yöne dik durması için çeyrek tur döndürülüyor.
+ */
+function SecurityGate({ position }: { position: readonly [number, number, number] }) {
+  const model = useModel(MODEL.securityGate);
+  return (
+    <primitive
+      object={model}
+      position={[position[0], 0, position[2]]}
+      scale={ASSET_SCALE}
+      rotation={[0, Math.PI / 2, 0]}
+    />
   );
 }
 

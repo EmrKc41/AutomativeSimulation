@@ -7,6 +7,10 @@ import {
   SCENE_FOV_DEG,
   ZONES,
   bufferSlot,
+  maxCameraDistance,
+  overviewExtent,
+  securityGatePlacement,
+  truckRoute,
   cameraBookmarks,
   incomingQcPlacement,
   machineSlot,
@@ -466,7 +470,62 @@ describe("scene vocabulary", () => {
    * köşesi kameranın görüş piramidine geri yansıtılıyor: hesabın nasıl
    * yapıldığından bağımsız bir kontrol.
    */
-  test("the overview frames every zone, including receiving and shipping", () => {
+  test.each([16 / 9, 21 / 9, 4 / 3, 582 / 682])(
+    "the overview frames everything drawn at aspect %f",
+    (aspect) => {
+      const overview = cameraBookmarks(config, aspect).find((mark) => mark.id === "overview")!;
+
+      const forward = normalise(subtract(overview.target, overview.position));
+      const right = normalise(cross(forward, [0, 1, 0]));
+      const up = cross(right, forward);
+
+      const halfV = Math.tan((SCENE_FOV_DEG / 2) * (Math.PI / 180));
+      const halfH = Math.tan(Math.atan(halfV * aspect));
+
+      for (const point of overviewExtent(config)) {
+        const v = subtract(point, overview.position);
+        const depth = dot(v, forward);
+        const nerede = `[${point[0].toFixed(1)}, ${point[2].toFixed(1)}]`;
+
+        expect(depth, `${nerede} kameranın arkasında`).toBeGreaterThan(0);
+        expect(Math.abs(dot(v, right)) / depth, `${nerede} yanlardan taşıyor`).toBeLessThanOrEqual(
+          halfH,
+        );
+        expect(Math.abs(dot(v, up)) / depth, `${nerede} üstten/alttan taşıyor`).toBeLessThanOrEqual(
+          halfV,
+        );
+      }
+    },
+  );
+
+  /**
+   * Kamera kontrolünün uzaklık sınırı, çerçevelemenin gerektirdiğinden kısa
+   * olmamalı. Sabit 70 birimlik sınır, güvenlik kapısı eklenince genel
+   * görünümü sessizce yakına çekiyor ve tesisin bir ucunu kırpıyordu.
+   */
+  test.each([16 / 9, 4 / 3, 582 / 682])(
+    "the camera may pull back far enough for the overview at aspect %f",
+    (aspect) => {
+      const overview = cameraBookmarks(config, aspect).find((mark) => mark.id === "overview")!;
+      const gerekli = Math.hypot(
+        overview.position[1] - overview.target[1],
+        overview.position[2] - overview.target[2],
+      );
+
+      expect(maxCameraDistance(config, aspect)).toBeGreaterThanOrEqual(gerekli);
+    },
+  );
+
+  /**
+   * Saha sayfası açılışta "overview" görünümünü seçiyor; öyle bir görünüm
+   * yoksa üst çubukta hiçbir düğme seçili görünmüyor ve kamera hangi görünümde
+   * olduğunu söylemiyor.
+   */
+  test("the view the shop floor opens with actually exists", () => {
+    expect(cameraBookmarks(config).map((mark) => mark.id)).toContain("overview");
+  });
+
+  test("the overview frames everything drawn, gate and shipping included", () => {
     const overview = cameraBookmarks(config).find((mark) => mark.id === "overview")!;
 
     const forward = normalise(subtract(overview.target, overview.position));
@@ -477,26 +536,18 @@ describe("scene vocabulary", () => {
     // En dar makul ekran; daha geniş bir ekranda pay yalnızca artar.
     const halfH = Math.tan(Math.atan(halfV * (16 / 9)));
 
-    for (const zone of ZONES) {
-      const [x0, y0, x1, y1] = zone.rect;
-      for (const [planX, planY] of [
-        [x0, y0],
-        [x1, y0],
-        [x0, y1],
-        [x1, y1],
-      ] as const) {
-        const corner = toWorld(planX, planY);
-        const v = subtract(corner, overview.position);
-        const depth = dot(v, forward);
+    for (const point of overviewExtent(config)) {
+      const v = subtract(point, overview.position);
+      const depth = dot(v, forward);
+      const nerede = `[${point[0].toFixed(1)}, ${point[2].toFixed(1)}]`;
 
-        expect(depth, `${zone.label} kameranın arkasında`).toBeGreaterThan(0);
-        expect(Math.abs(dot(v, right)) / depth, `${zone.label} yanlardan taşıyor`).toBeLessThanOrEqual(
-          halfH,
-        );
-        expect(Math.abs(dot(v, up)) / depth, `${zone.label} üstten/alttan taşıyor`).toBeLessThanOrEqual(
-          halfV,
-        );
-      }
+      expect(depth, `${nerede} kameranın arkasında`).toBeGreaterThan(0);
+      expect(Math.abs(dot(v, right)) / depth, `${nerede} yanlardan taşıyor`).toBeLessThanOrEqual(
+        halfH,
+      );
+      expect(Math.abs(dot(v, up)) / depth, `${nerede} üstten/alttan taşıyor`).toBeLessThanOrEqual(
+        halfV,
+      );
     }
   });
 
@@ -508,23 +559,47 @@ describe("scene vocabulary", () => {
    * bir alanın kamerası artık tesisin konum tablosundan okunduğu için elle
    * yazılmış bir sayı geride kalamaz.
    */
-  test.each([
-    ["receiving", "RECEIVING-DOCK"],
-    ["shipping", "SHIPPING-YARD"],
-  ])("the %s view actually looks at %s", (bookmarkId, location) => {
-    const mark = cameraBookmarks(config).find((candidate) => candidate.id === bookmarkId)!;
-    const [x, , z] = toWorld(...planPosition(config, location));
+  test("the shipping view actually looks at the shipping yard", () => {
+    const mark = cameraBookmarks(config).find((candidate) => candidate.id === "shipping")!;
+    const [x, , z] = toWorld(...planPosition(config, "SHIPPING-YARD"));
 
     expect(mark.target[0]).toBeCloseTo(x, 6);
     expect(mark.target[2]).toBeCloseTo(z, 6);
     // Yakın plan: alanı dolduracak kadar yakın, içine girmeyecek kadar uzak.
-    const distance = Math.hypot(
-      mark.position[0] - x,
-      mark.position[1],
-      mark.position[2] - z,
-    );
+    const distance = Math.hypot(mark.position[0] - x, mark.position[1], mark.position[2] - z);
     expect(distance).toBeGreaterThan(4 * SCALE);
     expect(distance).toBeLessThan(40);
+  });
+
+  /**
+   * Mal kabul görünümü, girişin tamamını göstermeli.
+   *
+   * "Mal kabul" tek bir rampa değil, bir dizi: güvenlik kapısı → yol → dönüş →
+   * rampa. Yalnızca rampaya bakan bir kamera hikâyenin sonunu gösteriyordu ve
+   * güvenlik kapısı kadraja hiç girmiyordu.
+   */
+  test("the receiving view frames the whole entrance, gate to dock", () => {
+    const mark = cameraBookmarks(config).find((candidate) => candidate.id === "receiving")!;
+
+    const forward = normalise(subtract(mark.target, mark.position));
+    const right = normalise(cross(forward, [0, 1, 0]));
+    const up = cross(right, forward);
+    const halfV = Math.tan((SCENE_FOV_DEG / 2) * (Math.PI / 180));
+    const halfH = Math.tan(Math.atan(halfV * (16 / 9)));
+
+    for (const point of truckRoute(config)) {
+      const v = subtract(point, mark.position);
+      const depth = dot(v, forward);
+      const nerede = `[${point[0].toFixed(1)}, ${point[2].toFixed(1)}]`;
+
+      expect(depth, `${nerede} kameranın arkasında`).toBeGreaterThan(0);
+      expect(Math.abs(dot(v, right)) / depth, `${nerede} yanlardan taşıyor`).toBeLessThanOrEqual(
+        halfH,
+      );
+      expect(Math.abs(dot(v, up)) / depth, `${nerede} üstten/alttan taşıyor`).toBeLessThanOrEqual(
+        halfV,
+      );
+    }
   });
 
   test("every state the scene can render has both a colour and a word", () => {
@@ -705,7 +780,14 @@ describe("yerleşim revizyonu: bağımsız alanlar, düz tırlar, tanımlı güz
     expect(placed[0]!.heading).toBe(0);
   });
 
-  test("the inbound truck drives straight in, so its path has no sideways jog", () => {
+  /**
+   * Tırın güzergâhı: güvenlik kapısından düz gelir, mal kabul hizasında sağa
+   * döner, rampaya yanaşır.
+   *
+   * Her parça tek eksende — yani araç asla çapraz süzülmüyor — ama iki parça
+   * var, çünkü gerçek bir tır kapıdan rampaya tek bir doğru üzerinde gelmez.
+   */
+  test("the inbound truck drives in a straight leg, then turns right into the dock", () => {
     const arriving = (progress: number) =>
       placeTrucks(
         config,
@@ -730,9 +812,89 @@ describe("yerleşim revizyonu: bağımsız alanlar, düz tırlar, tanımlı güz
         }),
       )[0]!;
 
-    // Güzergâh tek eksende: X sabit, yalnızca Z değişiyor.
-    expect(arriving(0).position[0]).toBeCloseTo(arriving(1).position[0], 6);
-    expect(arriving(0).position[2]).not.toBeCloseTo(arriving(1).position[2], 6);
+    const kapi = arriving(0);
+    const rampa = arriving(1);
+
+    // Giriş parçası: X sabit, yalnızca Z azalıyor — araç yol boyunca ilerliyor.
+    expect(arriving(0.1).position[0]).toBeCloseTo(kapi.position[0], 6);
+    expect(arriving(0.1).position[2]).toBeLessThan(kapi.position[2]);
+
+    // Yanaşma parçası: Z sabit, X artıyor — sağa dönmüş durumda rampaya gidiyor.
+    expect(arriving(0.95).position[2]).toBeCloseTo(rampa.position[2], 6);
+    expect(arriving(0.95).position[0]).toBeLessThan(rampa.position[0]);
+
+    // Dönüş sağa: köşe rampanın solunda, yani araç dönüşten sonra +X'e gidiyor.
+    expect(kapi.position[0]).toBeLessThan(rampa.position[0]);
+    expect(kapi.position[2]).toBeGreaterThan(rampa.position[2]);
+  });
+
+  /**
+   * Açı gidilen yönü izlemeli.
+   *
+   * Kusur buydu: açı sabit 0'dı, yani tır bütün yol boyunca yüzü yana dönük,
+   * yengeç gibi ilerliyordu. Model +X'e baktığı için yolda π/2, rampada 0
+   * olmalı.
+   */
+  test("the inbound truck faces the way it is driving", () => {
+    const arriving = (progress: number) =>
+      placeTrucks(
+        config,
+        frame({
+          trucks: [
+            {
+              id: "TIR-1",
+              materialId: "M",
+              batchId: "B",
+              quantity: 1,
+              status: "ARRIVING",
+              dispatchedAt: 0,
+              dueAt: 8,
+              ticksRemaining: 2,
+              legTicks: 4,
+              progress,
+              dockId: "RECEIVING-DOCK",
+              accepted: null,
+              completedAt: null,
+            },
+          ],
+        }),
+      )[0]!;
+
+    // Yolda: burun −Z'ye, yani gidiş yönüne dönük.
+    expect(arriving(0).heading).toBeCloseTo(Math.PI / 2, 6);
+    expect(arriving(0.2).heading).toBeCloseTo(Math.PI / 2, 6);
+
+    // Rampada: burun +X'e, yani rampaya dönük.
+    expect(arriving(1).heading).toBeCloseTo(0, 6);
+
+    // Dönüş tek yönlü ve yumuşak: açı hiçbir yerde geri artmıyor.
+    let onceki = Infinity;
+    for (let i = 0; i <= 20; i += 1) {
+      const aci = arriving(i / 20).heading;
+      expect(aci).toBeLessThanOrEqual(onceki + 1e-9);
+      onceki = aci;
+    }
+  });
+
+  /**
+   * Fabrikanın bir sınırı olmalı.
+   *
+   * Kapı olmadan tır doğrudan mal kabulün önünde beliriyordu; sahada hiçbir
+   * araç kapıda durmadan içeri alınmaz. Kapı tesisin dışında, mal kabul
+   * bölgesinin ötesinde durmalı.
+   */
+  test("trucks enter through a security gate outside the plant", () => {
+    const gate = securityGatePlacement(config);
+    const inbound = ZONES.find((zone) => zone.id === "inbound")!;
+    const [zoneX, , zoneZ] = toWorld(inbound.rect[0], inbound.rect[3]);
+
+    // Kapı, mal kabul bölgesinin hem solunda hem önünde: tır önce oradan geçer.
+    expect(gate[0]).toBeLessThan(zoneX);
+    expect(gate[2]).toBeGreaterThan(zoneZ);
+
+    // Ve genel görünüm onu çerçevelemeli — kapsam hesabına dahil.
+    const extent = overviewExtent(config);
+    expect(extent).toContainEqual(gate);
   });
 
   test("the outbound carrier faces right and leaves along the same straight line", () => {

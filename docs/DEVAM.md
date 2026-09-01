@@ -50,7 +50,7 @@ npx tsc --noEmit && npx eslint . && npx prettier --check . && npm test
 cd web && npx tsc --noEmit && npx eslint . && npm test && npm run build
 ```
 
-Beklenen: motorda **169 test**, web tarafında **43 test**, hepsi geçer.
+Beklenen: motorda **169 test**, web tarafında **53 test**, hepsi geçer.
 
 ---
 
@@ -176,6 +176,10 @@ git commit -m "Automotive smart factory digital twin: engine, command centre, 3D
   değiştirir** — ya da ölçek farkını bilinçli bir şematik abartı olarak kabul
   edip tır gibi büyük varlıkları ayrı ölçekte çizmek. Kullanıcı kararı
   gerektiriyor.
+- **`docs/onizleme.png` güncel değil.** Blender önizlemesi (`npm run preview`)
+  güvenlik kapısını ve yeni tır güzergâhını bilmiyor; `tools/models/preview.py`
+  kendi yerleşim sabitlerini tutuyor ve bu turda güncellenmedi. Sahnenin
+  doğrulanacağı yer artık tarayıcı.
 - **Sahne artık gerçekten görüldü.** Tarayıcı paneli kare üretiyor; genel
   görünüm, mal kabul ve sevkiyat ekran görüntüleriyle doğrulandı. Sahne koyu;
   makineler zeminden zor ayrılıyor — aydınlatma hâlâ elden geçmedi.
@@ -595,6 +599,50 @@ taşındı — irsaliye ve etiket onunla eşleşiyor.
 
 Ayrıca: bağlantı koptuğunda yeniden deneme gecikmesi sıfırlanmıyordu, sağlıklı
 bir oturumda birkaç kesintiden sonra kalıcı olarak 8 saniyeye takılıyordu.
+
+### Güvenlik kapısı ve tırın güzergâhı
+
+Kullanıcı iki şey istedi: tır **normal araba sürüşü gibi** kendi gittiği yöne
+baksın ve mal kabul hizasında **sağa dönsün**; ayrıca fabrikaya girmeden önce
+bir **güvenlik kapısından** geçsin.
+
+**Tır yan yan gidiyordu.** Güzergâh Z ekseninde, açı ise sabit `0` — yani model
++X'e bakarken −Z yönünde ilerliyordu. Sabit açı, bir önceki turda "çapraz
+durmasın" diye konmuştu; çaprazlığı çözerken yönü de dondurmuş. Güzergâh artık
+iki düz parça: **kapıdan köşeye** (−Z), **köşeden rampaya** (+X). Açı gidilen
+yönden hesaplanıyor ve köşede yumuşak geçiyor — 17 birimlik bir araçta 90°'lik
+ani atlama dönmek gibi değil, yerinde takla gibi görünüyordu.
+
+**Güvenlik kapısı** yeni bir Blender varlığı (`guvenlik`): kapı direkleri, üst
+kirişte sarı yükseklik şeridi, camlı kulübe ve kırmızı-beyaz bariyer kolu.
+Tesisin sınırı artık sahnede var; önceden tır doğrudan mal kabulün önünde
+beliriyordu. Tırın yolu da zemine çizildi (`TruckRoad`), doli koridorları gibi
+ama daha geniş — genişlik hangi aracın geçtiğini söylüyor.
+
+Bunları yaparken kamerada **beş** kusur daha çıktı, hepsi düzeltildi ve teste
+bağlandı:
+
+1. **Kamera ekran oranını bilmiyordu.** 16:9 varsayılıyordu; dikey bir pencerede
+   tesis tamamen ekran dışında kalıyordu. Artık sahne kendi oranını veriyor.
+2. **`maxDistance={70}`** genel görünümün gerektirdiği mesafeyi kırpıyordu —
+   hesaplanan görünüm doğru olsa bile kamera sessizce yakına çekiliyordu. Sınır
+   artık çerçevelemeden türüyor.
+3. **Sis 55–140 birime sabitti.** Kamera geri çekilince tesisin tamamı sisin
+   ötesinde kaldı ve ekran tek renk boşluğa döndü — hiçbir yerde hata mesajı
+   olmayan türden. Sis ve görüş menzili sahnenin boyutundan hesaplanıyor.
+4. **Açılışta kamera varsayılan görünüme gitmiyordu.** Efekt, `CameraControls`
+   henüz bağlanmamışken çalışıp vazgeçiyordu (ref, state değil) ve sahne
+   `Canvas` üzerindeki başlangıç kamerasında kalıyordu. Ayrıca ilk yerleştirme
+   artık animasyonsuz — açılışta kameranın uçarak gelmesi için sebep yok.
+5. **Varsayılan görünüm adı `"line"`** idi ve öyle bir görünüm yok; üst çubukta
+   hiçbir düğme seçili görünmüyordu.
+
+Ayrıca **"Mal Kabul" görünümü** artık girişin tamamını çerçeveliyor: güvenlik
+kapısı → yol → dönüş → rampa. Yalnızca rampaya bakmak hikâyenin sonunu
+göstermekti.
+
+Doğrulandı (tarayıcıda, ekran görüntüsüyle): 00:17'de tır yolda, burnu gidiş
+yönünde; 00:19'da sağa dönmüş, mal kabule yanaşıyor.
 
 ### Sırada ne var
 

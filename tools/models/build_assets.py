@@ -964,6 +964,71 @@ def gecis(klasor):
     disa_aktar("gecis", klasor)
 
 
+def guvenlik(klasor):
+    """
+    Fabrika güvenlik kapısı — tesise girişin ilk noktası.
+
+    Sahada hiçbir tır doğrudan mal kabule dalmaz: önce kapıda durur, evrakı
+    kontrol edilir, bariyer kalkar. Sahnede bu nokta yoktu ve tır sanki
+    fabrikanın içinde beliriveriyordu.
+
+    Üç parça: iki yandan kapı direkleri, sağda güvenlik kulübesi, ortada
+    kalkan bariyer. Bariyer yatay duruyor — yani kapalı; tır geçerken
+    açıldığını anlatmak sahnenin işi, modelin değil.
+
+    Geçiş ekseni +X; kapıdan geçen araç bu yönde ilerler.
+    """
+    temizle()
+    parcalar = []
+
+    # Kapı direkleri — geçiş açıklığını tanımlayan şey
+    for y in (-4.6, 4.6):
+        direk = kutu("direk", (0.7, 0.7, 5.4), konum=(0, y, 2.7))
+        malzeme(pah(direk, 0.04), "guv-direk", (0.24, 0.25, 0.31), metal=0.2, puruz=0.75)
+        parcalar.append(direk)
+
+    # Üst kiriş — kapıyı "kapı" yapan, üstten bağlayan parça
+    kiris = kutu("kiris", (0.7, 9.9, 0.8), konum=(0, 0, 5.8))
+    malzeme(pah(kiris, 0.04), "guv-direk", (0.24, 0.25, 0.31), metal=0.2, puruz=0.75)
+    parcalar.append(kiris)
+
+    # Kirişin altındaki sarı şerit: yükseklik sınırını işaretler
+    serit = kutu("serit", (0.74, 9.9, 0.24), konum=(0, 0, 5.3))
+    malzeme(serit, "guv-serit", SARI, puruz=0.55)
+    parcalar.append(serit)
+
+    # Güvenlik kulübesi — camlı, içeride biri var
+    kulube = kutu("kulube", (2.6, 2.6, 3.0), konum=(0, 6.9, 1.5))
+    malzeme(pah(kulube, 0.05), "guv-kulube", (0.21, 0.22, 0.28), metal=0.15, puruz=0.8)
+    parcalar.append(kulube)
+
+    for x, y, boyut in ((-1.32, 6.9, (0.06, 2.0, 1.2)), (0, 5.58, (2.0, 0.06, 1.2))):
+        cam_p = kutu("kulube-cam", boyut, konum=(x, y, 2.0))
+        malzeme(cam_p, "guv-cam", CAM, metal=0.1, puruz=0.15)
+        parcalar.append(cam_p)
+
+    cati = kutu("kulube-cati", (3.0, 3.0, 0.16), konum=(0, 6.9, 3.08))
+    malzeme(pah(cati, 0.03), "guv-cati", KOYU, metal=0.3, puruz=0.7)
+    parcalar.append(cati)
+
+    # Bariyer kolu — kapalı konumda, geçişin karşısında yatıyor
+    kol = kutu("bariyer", (0.16, 8.4, 0.22), konum=(0, 0.9, 1.15))
+    malzeme(kol, "guv-bariyer", (0.62, 0.18, 0.15), puruz=0.5)
+    parcalar.append(kol)
+
+    for y in (-2.4, 0.3, 3.0):
+        band = kutu("bariyer-band", (0.18, 0.7, 0.24), konum=(0, y, 1.15))
+        malzeme(band, "guv-band", (0.86, 0.86, 0.88), puruz=0.5)
+        parcalar.append(band)
+
+    mil = silindir("bariyer-mil", 0.22, 0.5, konum=(0, 5.2, 1.15), donme=(0, math.pi / 2, 0))
+    malzeme(mil, "guv-mil", CELIK, metal=0.7, puruz=0.4)
+    parcalar.append(mil)
+
+    birlestir(parcalar, "Guvenlik")
+    disa_aktar("guvenlik", klasor)
+
+
 VARLIKLAR = {
     # Faz 1 — mal kabul
     "tir": tir,
@@ -972,6 +1037,7 @@ VARLIKLAR = {
     "rampa": rampa,
     "iqc-masa": kalite_masasi,
     "gecis": gecis,
+    "guvenlik": guvenlik,
     "sevkiyat": sevkiyat_binasi,
     "doli": doli,
     # Faz 3 — depo

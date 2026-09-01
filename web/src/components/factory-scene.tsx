@@ -1,7 +1,7 @@
 "use client";
 
 import { CameraControls, Grid, Html } from "@react-three/drei";
-import { Canvas, useFrame } from "@react-three/fiber";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Suspense, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { Group, Mesh, MeshBasicMaterial } from "three";
 
@@ -22,6 +22,10 @@ import {
   ZONES,
   planPosition,
   cameraBookmarks,
+  cameraFarPlane,
+  maxCameraDistance,
+  truckRoute,
+  sceneDepth,
   placeAgvs,
   placeUnits,
   stationWorld,
@@ -62,11 +66,11 @@ export function FactoryScene(props: FactorySceneProps) {
       // would double the cost for a difference nobody would name.
       shadows
       dpr={[1, 1.75]}
-      camera={{ position: [0, 24, 30], fov: SCENE_FOV_DEG, near: 0.1, far: 400 }}
+      camera={{ position: [0, 24, 30], fov: SCENE_FOV_DEG, near: 0.1, far: cameraFarPlane(props.config) }}
       // A dark hall: the scene must sit on the same ground as the rest of the UI.
       onCreated={({ gl }) => gl.setClearColor("#14121f")}
     >
-      <fog attach="fog" args={["#14121f", 55, 140]} />
+      <SceneDepth config={props.config} />
       <ambientLight intensity={0.42} />
       <hemisphereLight args={["#9db2d4", "#0d0b16", 0.55]} />
       <directionalLight
@@ -98,6 +102,7 @@ export function FactoryScene(props: FactorySceneProps) {
 
       <Ground />
       <Zones showLabels={props.showLabels} />
+      <TruckRoad config={props.config} />
       <TugRoutes config={props.config} />
       <Conveyor config={props.config} />
       <Stations {...props} reducedMotion={reducedMotion} />
@@ -221,6 +226,39 @@ function TugRoutes({ config }: { config: FactoryDescriptor }) {
           <meshBasicMaterial color={TONE.logistics.hex} transparent opacity={0.22} />
         </mesh>
       ))}
+    </group>
+  );
+}
+
+/**
+ * Tırın yolu, zemine çizili.
+ *
+ * Güvenlik kapısından dönüş köşesine, oradan rampaya. İki düz parça, tıpkı
+ * aracın gittiği gibi. Yol çizilmediğinde kapı sahanın dışında boşlukta
+ * duruyor gibi görünüyordu; oysa fabrikanın sınırı ile mal kabul arasında
+ * gerçekten bir yol var ve tır onu izliyor.
+ *
+ * Doli koridorlarından daha geniş, çünkü tır daha geniş — genişlik burada süs
+ * değil, hangi aracın geçtiğini söyleyen şey.
+ */
+function TruckRoad({ config }: { config: FactoryDescriptor }) {
+  const [gate, corner, dock] = truckRoute(config);
+  if (!gate || !corner || !dock) return null;
+
+  const genislik = 3.4;
+
+  return (
+    <group>
+      {/* Giriş yolu: kapıdan köşeye, Z ekseninde. */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[gate[0], 0.012, (gate[2] + corner[2]) / 2]}>
+        <planeGeometry args={[genislik, Math.abs(gate[2] - corner[2]) + genislik]} />
+        <meshBasicMaterial color={TONE.logistics.hex} transparent opacity={0.16} />
+      </mesh>
+      {/* Yanaşma yolu: köşeden rampaya, X ekseninde. */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[(corner[0] + dock[0]) / 2, 0.012, corner[2]]}>
+        <planeGeometry args={[Math.abs(dock[0] - corner[0]) + genislik, genislik]} />
+        <meshBasicMaterial color={TONE.logistics.hex} transparent opacity={0.16} />
+      </mesh>
     </group>
   );
 }
@@ -695,6 +733,20 @@ function TugCart() {
 // Camera
 // ---------------------------------------------------------------------------
 
+/**
+ * Sisi ve görüş menzilini sahnenin boyutuna göre ayarlar.
+ *
+ * Sabit değerlerle yazılmıştı ve kamera geriye çekildiğinde tesisin tamamı
+ * sisin ötesinde kalıyordu: sahne çiziliyor, ekranda tek renk boşluk
+ * görünüyordu. En sinsi hata türü — hiçbir yerde hata mesajı yok.
+ */
+function SceneDepth({ config }: { config: FactoryDescriptor }) {
+  const aspect = useThree((state) => state.size.width / state.size.height);
+  const { fogNear, fogFar } = useMemo(() => sceneDepth(config, aspect), [config, aspect]);
+
+  return <fog attach="fog" args={["#14121f", fogNear, fogFar]} />;
+}
+
 function BookmarkCamera({
   config,
   bookmark,
@@ -704,23 +756,42 @@ function BookmarkCamera({
   bookmark: string;
   reducedMotion: boolean;
 }) {
-  const controls = useRef<CameraControls>(null);
-  const bookmarks = useMemo(() => cameraBookmarks(config), [config]);
+  // Ref değil state: kontrol bağlandığı anda efektin *yeniden* çalışması
+  // gerekiyor. Ref ile ilk çalışmada `controls.current` henüz null oluyordu ve
+  // efekt sessizce vazgeçiyordu — sayfa açıldığında sahne varsayılan görünüme
+  // hiç gitmiyor, `Canvas` üzerindeki başlangıç kamerasında kalıyordu.
+  const [controls, setControls] = useState<CameraControls | null>(null);
+  // Çerçeveleme ekran oranına bağlı: dar bir pencerede kamera daha geriden
+  // bakmak zorunda. Sabit bir oran varsayıldığında dikey bir panelde tesis
+  // tamamen ekran dışında kalıyordu.
+  const aspect = useThree((state) => state.size.width / state.size.height);
+  const bookmarks = useMemo(() => cameraBookmarks(config, aspect), [config, aspect]);
+  const maxDistance = useMemo(() => maxCameraDistance(config, aspect), [config, aspect]);
+
+  // İlk yerleştirme animasyonsuz.
+  //
+  // Animasyonlu çağrı, kontrol daha yeni bağlanmışken sessizce boşa gidiyordu:
+  // sayfa açılıyor, "Genel" seçili görünüyor, ekran boş kalıyordu. Zaten
+  // doğrusu da bu — açılışta kameranın bir yerden uçarak gelmesi için bir sebep
+  // yok; uçuş yalnızca görünümler *arasında* geçerken anlamlı.
+  const yerlesti = useRef(false);
 
   useEffect(() => {
     const target = bookmarks.find((candidate) => candidate.id === bookmark) ?? bookmarks[0];
-    if (!target || !controls.current) return;
+    if (!target || !controls) return;
     const [px, py, pz] = target.position;
     const [tx, ty, tz] = target.target;
-    void controls.current.setLookAt(px, py, pz, tx, ty, tz, !reducedMotion);
-  }, [bookmark, bookmarks, reducedMotion]);
+    const gecis = yerlesti.current && !reducedMotion;
+    yerlesti.current = true;
+    void controls.setLookAt(px, py, pz, tx, ty, tz, gecis);
+  }, [bookmark, bookmarks, controls, reducedMotion]);
 
   return (
     <CameraControls
-      ref={controls}
+      ref={setControls}
       makeDefault
       minDistance={3}
-      maxDistance={70}
+      maxDistance={maxDistance}
       maxPolarAngle={Math.PI / 2.15}
       smoothTime={reducedMotion ? 0 : 0.35}
     />

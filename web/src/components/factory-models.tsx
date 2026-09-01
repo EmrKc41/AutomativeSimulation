@@ -30,6 +30,7 @@ export const MODEL = {
   shippingBuilding: "/models/sevkiyat.glb",
   tugCart: "/models/doli.glb",
   dock: "/models/rampa.glb",
+  securityGate: "/models/guvenlik.glb",
   pallet: "/models/palet.glb",
   rack: "/models/raf.glb",
   conveyor: "/models/konveyor.glb",

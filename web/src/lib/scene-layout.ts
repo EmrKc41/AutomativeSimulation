@@ -130,8 +130,27 @@ export interface CameraBookmark {
  * hatası da zaten böyle bir kopukluktan doğmuştu.
  */
 export const SCENE_FOV_DEG = 40;
-/** Hesabın dayandığı en dar makul ekran oranı; daha geniş ekranda pay artar. */
+/**
+ * Ekran oranı bilinmediğinde varsayılan.
+ *
+ * Sahne gerçek oranını biliyor ve onu veriyor; bu değer yalnızca kamera
+ * noktalarını sahne dışında (örneğin görünüm listesini kurarken) hesaplayanlar
+ * için. Sabit bırakıldığında dar bir pencerede tesis tamamen ekran dışında
+ * kalıyordu.
+ */
 const OVERVIEW_ASPECT = 16 / 9;
+
+/**
+ * Ekran oranını kullanılabilir hâle getirir.
+ *
+ * Sayfa açılırken tuval bir kare boyunca 0 genişlikte ölçülebiliyor. O anda
+ * oran 0 oluyor, yatay görüş açısı 0'a gidiyor ve gereken mesafe sonsuza
+ * çıkıyor: kamera sonsuza yerleşiyor, ekran boş kalıyor ve boyut düzelse bile
+ * bir daha toparlanmıyor. Bu yüzden anlamsız bir oran hesaba hiç girmiyor.
+ */
+function kullanilabilirOran(aspect: number): number {
+  return Number.isFinite(aspect) && aspect > 0.05 ? aspect : OVERVIEW_ASPECT;
+}
 /** Kenarlarda bırakılan pay: bina cepheleri tam sınıra dayanmasın. */
 const OVERVIEW_MARGIN = 1.12;
 /** Kameranın yere bakış açısı. Dik bakış plan çizimine, alçak bakış tünele benzer. */
@@ -146,20 +165,57 @@ const OVERVIEW_PITCH_DEG = 38;
  * hesaplanıyor, çünkü "her şey görünsün" bir koordinat değil bir kural; bir
  * sonraki yerleşim değişikliğinde de kendiliğinden doğru kalmalı.
  */
-function overviewBookmark(): CameraBookmark {
-  const x0 = Math.min(...ZONES.map((zone) => zone.rect[0]));
-  const x1 = Math.max(...ZONES.map((zone) => zone.rect[2]));
-  const y0 = Math.min(...ZONES.map((zone) => zone.rect[1]));
-  const y1 = Math.max(...ZONES.map((zone) => zone.rect[3]));
+/**
+ * Genel görünümün kapsaması gereken her şey, dünya koordinatında.
+ *
+ * Yalnızca `ZONES` yetmiyor: güvenlik kapısı ve giriş yolu bilerek bölgelerin
+ * *dışında* — gerçek bir fabrikada da kapı tesisin sınırındadır, binaların
+ * içinde değil. Kamera çizilen şeyi çerçevelemeli, yalnızca bölgelenmiş olanı
+ * değil.
+ */
+export function overviewExtent(config: FactoryDescriptor): readonly World[] {
+  const points: World[] = [];
+  for (const zone of ZONES) {
+    const [x0, y0, x1, y1] = zone.rect;
+    points.push(toWorld(x0, y0), toWorld(x1, y0), toWorld(x0, y1), toWorld(x1, y1));
+  }
+  // Tırın yolu: güvenlik kapısı, dönüş köşesi ve rampa.
+  points.push(gateWorld(config), turnWorld(config), dockWorld(config));
+  return points;
+}
 
-  const [centreX, , centreZ] = toWorld((x0 + x1) / 2, (y0 + y1) / 2);
-  const halfWidth = ((x1 - x0) / 2) * SCALE;
+function overviewBookmark(config: FactoryDescriptor, rawAspect: number): CameraBookmark {
+  const aspect = kullanilabilirOran(rawAspect);
+  const points = overviewExtent(config);
+  const xs = points.map((point) => point[0]);
+  const zs = points.map((point) => point[2]);
+  const centreX = (Math.min(...xs) + Math.max(...xs)) / 2;
+  const centreZ = (Math.min(...zs) + Math.max(...zs)) / 2;
 
-  // Tesis hattı boyunca uzun; kırpılma her zaman yatayda olur, o yüzden mesafe
-  // yatay görüş açısından çıkarılıyor.
-  const halfFov = Math.atan(Math.tan((SCENE_FOV_DEG / 2) * (Math.PI / 180)) * OVERVIEW_ASPECT);
-  const distance = (halfWidth / Math.tan(halfFov)) * OVERVIEW_MARGIN;
+  const tanV = Math.tan((SCENE_FOV_DEG / 2) * (Math.PI / 180));
+  const tanH = Math.tan(Math.atan(tanV * aspect));
   const pitch = OVERVIEW_PITCH_DEG * (Math.PI / 180);
+
+  /*
+   * Gereken mesafe, tek tek her noktadan çıkarılıyor.
+   *
+   * İlk hâli tesisin yalnızca genişliğine bakıyordu ve güvenlik kapısını
+   * kırpıyordu: kapı kameraya yakın olduğu için aynı yanal kaçıklık orada çok
+   * daha büyük bir açıya karşılık geliyor. Yani "en geniş nokta" değil, "en
+   * zorlayan nokta" belirlemeli.
+   *
+   * Kamera hedefin d kadar gerisinde ve `pitch` açısıyla bakıyor. Bir nokta
+   * için derinlik `d − cos(pitch)·dz`, yanal kaçıklık `dx`, dikey kaçıklık ise
+   * `sin(pitch)·dz`. İkisini de görüş açısına sığdıran en küçük d aranıyor.
+   */
+  let distance = 0;
+  for (const point of points) {
+    const dx = Math.abs(point[0] - centreX);
+    const dz = point[2] - centreZ;
+    const zemin = Math.cos(pitch) * dz;
+    distance = Math.max(distance, dx / tanH + zemin, (Math.sin(pitch) * Math.abs(dz)) / tanV + zemin);
+  }
+  distance *= OVERVIEW_MARGIN;
 
   return {
     id: "overview",
@@ -169,8 +225,33 @@ function overviewBookmark(): CameraBookmark {
   };
 }
 
+/**
+ * Mal kabul görünümü: kapıdan rampaya kadar bütün giriş.
+ *
+ * Yalnızca rampaya bakan bir kamera hikâyenin sonunu gösteriyordu. Malzemenin
+ * tesise nasıl girdiği — güvenlik kapısı, yol, dönüş, rampa — tek karede
+ * görünmeli; "mal kabul" dediğimiz şey bu dizinin tamamı.
+ */
+function receivingView(config: FactoryDescriptor): { position: World; target: World } {
+  const [gate, corner, dock] = truckRoute(config);
+  if (!gate || !corner || !dock) return { position: [0, 10, 20], target: [0, 0, 0] };
+
+  const centreX = (corner[0] + dock[0]) / 2;
+  const centreZ = (gate[2] + corner[2]) / 2;
+  // Yolun iki ucunu da alacak kadar geri: en uzun bacak ne kadarsa o kadar.
+  const yayilim = Math.max(Math.abs(gate[2] - corner[2]), Math.abs(dock[0] - corner[0]));
+
+  return {
+    position: [centreX - yayilim * 0.5, yayilim * 1.15, centreZ + yayilim * 1.5],
+    target: [centreX, 0.6, centreZ],
+  };
+}
+
 /** Named viewpoints an operator would actually ask for. */
-export function cameraBookmarks(config: FactoryDescriptor): readonly CameraBookmark[] {
+export function cameraBookmarks(
+  config: FactoryDescriptor,
+  aspect: number = OVERVIEW_ASPECT,
+): readonly CameraBookmark[] {
   const look = (stationId: string, offset: World): CameraBookmark["position"] => {
     const [x, , z] = stationWorld(config, stationId);
     return [x + offset[0], offset[1], z + offset[2]];
@@ -196,8 +277,8 @@ export function cameraBookmarks(config: FactoryDescriptor): readonly CameraBookm
   };
 
   return [
-    overviewBookmark(),
-    { id: "receiving", label: "Mal Kabul", ...area("RECEIVING-DOCK", [-12, 16, 30]) },
+    overviewBookmark(config, aspect),
+    { id: "receiving", label: "Mal Kabul", ...receivingView(config) },
     { id: "press", label: "Pres", position: look("PRESS-01", [-5, 5, 8]), target: at("PRESS-01") },
     {
       id: "body",
@@ -226,6 +307,61 @@ export function cameraBookmarks(config: FactoryDescriptor): readonly CameraBookm
     },
     { id: "shipping", label: "Sevkiyat", ...area("SHIPPING-YARD", [12, 16, 30]) },
   ];
+}
+
+/**
+ * Kameranın hedefe olan en büyük uzaklığı.
+ *
+ * Sahnedeki kontrol bunu sınırlıyor. Sabit bir sınır (70) genel görünümün
+ * gerektirdiği mesafeden kısa kalınca kamera sessizce yakına çekiliyor ve
+ * tesisin bir kısmı ekran dışında kalıyordu — hesaplanan görünüm doğru olsa
+ * bile. Sınır, çerçevelemenin kendisinden gelmeli.
+ */
+export function maxCameraDistance(config: FactoryDescriptor, aspect: number): number {
+  return overviewDistance(config, aspect) * 1.15;
+}
+
+/** Genel görünümde kameranın hedefe uzaklığı. */
+export function overviewDistance(config: FactoryDescriptor, aspect: number): number {
+  const overview = overviewBookmark(config, aspect);
+  return Math.hypot(
+    overview.position[1] - overview.target[1],
+    overview.position[2] - overview.target[2],
+  );
+}
+
+/**
+ * Sisin başladığı ve bittiği uzaklık, artı kameranın görüş menzili.
+ *
+ * Üçü de elle yazılıydı (55 / 140 / 400) ve kamera ~35 birim uzaktayken
+ * ayarlanmıştı. Güvenlik kapısı eklenip kamera 168 birime çekilince tesisin
+ * tamamı sisin *ötesinde* kaldı ve ekran tek renk boşluğa döndü — sahne
+ * çiziliyordu, yalnızca hiçbir şey görünmüyordu.
+ *
+ * Sis derinlik hissi için var, mesafeyi gizlemek için değil; o yüzden
+ * kameranın kendi uzaklığına göre ölçekleniyor.
+ */
+export function sceneDepth(
+  config: FactoryDescriptor,
+  aspect: number,
+): { fogNear: number; fogFar: number } {
+  const distance = overviewDistance(config, aspect);
+  return { fogNear: distance * 1.15, fogFar: distance * 2.6 };
+}
+
+/**
+ * Kameranın görüş menzili.
+ *
+ * Ekran oranından bağımsız tek bir değer, çünkü kamera nesnesi kurulduktan
+ * sonra değiştirilmiyor — değiştirmek React derleyicisinin haklı olarak
+ * yasakladığı bir mutasyon olurdu. O yüzden en zorlayan orana göre, yani en
+ * dar pencerede bile yetecek şekilde hesaplanıyor. Fazladan menzil bedava
+ * değil ama bu aralıkta derinlik tamponu için sorun çıkarmıyor.
+ */
+const EN_DAR_ORAN = 0.5;
+
+export function cameraFarPlane(config: FactoryDescriptor): number {
+  return overviewDistance(config, EN_DAR_ORAN) * 3.2;
 }
 
 export interface PlacedUnit {
@@ -343,12 +479,27 @@ export interface PlacedTruck {
 }
 
 /**
- * Fabrika kapısı: tırın sahaya girdiği nokta.
+ * Tırın izlediği yol, iki düz parça hâlinde.
  *
- * Mal kabul rampasının solunda ve dışında. Tır buradan rampaya doğru sürüyor,
- * yani hareketin yönü izleyiciye "içeri geliyor" diyor.
+ * Gerçek bir tır fabrikaya doğrudan dalmaz: **önce güvenlik kapısından geçer**,
+ * yol boyunca ilerler, mal kabul hizasına gelince **sağa döner** ve rampaya
+ * yanaşır. Önceki sürümde tek düz parça vardı ve tır bütün yol boyunca yan yan
+ * gidiyordu — hareketi Z ekseninde, yüzü ise +X'te sabitti.
+ *
+ * `APPROACH_Z` giriş yolunun uzunluğu, `TURN_OFFSET_X` dönüş köşesinin
+ * rampadan ne kadar solda olduğu. Köşe, tırın kendi boyundan uzakta durmalı;
+ * aksi hâlde dönüşü rampanın içinde tamamlar.
  */
-const GATE_OFFSET_Z = 34;
+const APPROACH_Z = 22;
+const TURN_OFFSET_X = 20;
+/**
+ * Dönüşün yayvanlaştığı pay.
+ *
+ * Tır köşeye gelmeden direksiyonu kırmaya başlar. Sıfır olsaydı açı köşede bir
+ * kare içinde 90° atlardı ve 17 birimlik bir araçta bu, dönmek gibi değil
+ * yerinde takla atmak gibi görünürdü.
+ */
+const TURN_BLEND = 0.16;
 
 /** Rampada tırın durduğu nokta — rampanın önü, hattın dışında. */
 function dockWorld(config: FactoryDescriptor): World {
@@ -358,16 +509,74 @@ function dockWorld(config: FactoryDescriptor): World {
   return [wx + 4, 0, wz + 3];
 }
 
+/** Tırın sağa döndüğü köşe: rampanın hizasında, ama solunda. */
+function turnWorld(config: FactoryDescriptor): World {
+  const [x, , z] = dockWorld(config);
+  return [x - TURN_OFFSET_X, 0, z];
+}
+
 /**
- * Fabrika kapısı: tırın sahaya girdiği nokta.
+ * Güvenlik kapısı: tesise girişin ilk noktası.
  *
- * Rampanın **tam önünde**, sadece uzakta. Böylece tır düz gelip düz yanaşıyor.
- * Önceki sürümde kapı hem yanda hem geride olduğu için tır rampaya çapraz
- * yanaşıyordu — bir tırın asla yapmayacağı şey; dorse kapıya dik girer.
+ * Giriş yolunun ucunda, dönüş köşesinin tam karşısında. Tır buradan içeri
+ * giriyor, yani sahnede fabrikanın bir sınırı var — önceki sürümde tır
+ * doğrudan mal kabulün önünde beliriyordu.
  */
 function gateWorld(config: FactoryDescriptor): World {
-  const [x, , z] = dockWorld(config);
-  return [x, 0, z + GATE_OFFSET_Z];
+  const [x, , z] = turnWorld(config);
+  return [x, 0, z + APPROACH_Z];
+}
+
+/** Güvenlik kapısı yapısının sahnedeki yeri. */
+export function securityGatePlacement(config: FactoryDescriptor): World {
+  return gateWorld(config);
+}
+
+/**
+ * Tırın izlediği yol: kapı → dönüş köşesi → rampa.
+ *
+ * Zemine çizilmesi için. Doli koridorları zaten işaretli; tırın yolu
+ * işaretsizken güvenlik kapısı sahanın dışında boşlukta duruyor gibi
+ * görünüyordu — oysa aralarında bir yol var.
+ */
+export function truckRoute(config: FactoryDescriptor): readonly World[] {
+  return [gateWorld(config), turnWorld(config), dockWorld(config)];
+}
+
+/**
+ * Yol üzerinde `t` oranındaki nokta ve o noktadaki yön.
+ *
+ * İki düz parça: kapıdan köşeye (−Z yönünde sürüş), köşeden rampaya (+X
+ * yönünde sürüş). `t` iki parçaya uzunlukları oranında bölünüyor, böylece hız
+ * köşede ne yavaşlıyor ne hızlanıyor.
+ *
+ * Açı, gidilen yönden **hesaplanıyor** — sabit değil. Tırın modeli +X'e
+ * baktığı için −Z yönünde sürerken açı π/2, +X yönünde sürerken 0.
+ */
+function truckOnRoute(config: FactoryDescriptor, t: number): { position: World; heading: number } {
+  const gate = gateWorld(config);
+  const corner = turnWorld(config);
+  const dock = dockWorld(config);
+
+  const girisUzunluk = Math.abs(gate[2] - corner[2]);
+  const yanasmaUzunluk = Math.abs(dock[0] - corner[0]);
+  const toplam = girisUzunluk + yanasmaUzunluk;
+  const donusNoktasi = girisUzunluk / toplam;
+
+  const position: World =
+    t <= donusNoktasi
+      ? [gate[0], 0, gate[2] + (corner[2] - gate[2]) * (t / donusNoktasi)]
+      : [
+          corner[0] + (dock[0] - corner[0]) * ((t - donusNoktasi) / (1 - donusNoktasi)),
+          0,
+          corner[2],
+        ];
+
+  // Açı köşenin iki yanında yumuşatılıyor: π/2 (yol boyunca) → 0 (rampaya).
+  const blend = Math.max(0, Math.min(1, (t - (donusNoktasi - TURN_BLEND)) / (2 * TURN_BLEND)));
+  const heading = (Math.PI / 2) * (1 - blend);
+
+  return { position, heading };
 }
 
 /**
@@ -378,24 +587,16 @@ function gateWorld(config: FactoryDescriptor): World {
  * izleyicinin "bu az önce gelen tır" diye bağ kurmasını sağlıyor.
  */
 export function placeTrucks(config: FactoryDescriptor, frame: FactoryFrame): PlacedTruck[] {
-  const gate = gateWorld(config);
-  const dock = dockWorld(config);
-
   return frame.trucks.map((truck) => {
     const gelis = truck.status === "ARRIVING";
     const t = gelis ? Math.max(0, Math.min(1, truck.progress)) : 1;
-    const position: World = [
-      gate[0] + (dock[0] - gate[0]) * t,
-      0,
-      gate[2] + (dock[2] - gate[2]) * t,
-    ];
+    const { position, heading } = truckOnRoute(config, t);
     return {
       id: truck.id,
       position,
-      // Düz duruş: tır rampaya dik yanaşıyor, çapraz değil. Sabit açı, çünkü
-      // güzergâh da düz — hesaplanan bir açı burada yalnızca yuvarlama
-      // hatasıyla eğrilik üretirdi.
-      heading: 0,
+      // Açı gidilen yönden geliyor. Sabit olsaydı — ki öyleydi — tır yol
+      // boyunca yüzü yana dönük, yengeç gibi ilerlerdi.
+      heading,
       status: truck.status,
       batchId: truck.batchId,
       materialId: truck.materialId,

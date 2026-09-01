@@ -40,7 +40,9 @@ const FactoryScene = dynamic(
 export function ShopFloor() {
   const { frame, connection } = useFactoryStream();
   const [config, setConfig] = useState<FactoryDescriptor | null>(null);
-  const [bookmark, setBookmark] = useState<string>("line");
+  // "line" diye bir görünüm yok; bu değer hiçbir düğmeyle eşleşmiyordu, yani
+  // sayfa açıldığında hangi görünümde olunduğu üst çubukta görünmüyordu.
+  const [bookmark, setBookmark] = useState<string>("overview");
   const [showLabels, setShowLabels] = useState(true);
   const [selectedStation, setSelectedStation] = useState<string | null>(null);
 
