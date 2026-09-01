@@ -11,7 +11,7 @@ import {
 import type { FactoryDescriptor } from "@/lib/api";
 import type { FactoryFrame } from "@/lib/contract";
 import { energy, minutes as minutesLabel, percent } from "@/lib/format";
-import { MACHINE_STATE, TONE, defectLabel } from "@/lib/status";
+import { INSPECTION_METHOD_LABEL, MACHINE_STATE, TONE, defectLabel } from "@/lib/status";
 import { cn } from "@/lib/utils";
 
 /**
@@ -60,14 +60,14 @@ export function StationDetail({
             <div
               className={cn(
                 "rounded-md border p-2",
-                TONE[recommendation(machine, station).tone].border,
-                TONE[recommendation(machine, station).tone].bg,
+                TONE[recommendation(machine, station, config).tone].border,
+                TONE[recommendation(machine, station, config).tone].bg,
               )}
             >
               <p className="text-muted-foreground text-[10px] tracking-widest uppercase">
                 Önerilen Aksiyon
               </p>
-              <p className="mt-0.5 leading-snug">{recommendation(machine, station).text}</p>
+              <p className="mt-0.5 leading-snug">{recommendation(machine, station, config).text}</p>
             </div>
 
             <dl className="grid grid-cols-2 gap-x-4 gap-y-1">
@@ -105,7 +105,7 @@ export function StationDetail({
                   label="Muayene"
                   value={
                     station.inspection.enabled
-                      ? `${station.inspection.method.toLowerCase()} · ${station.inspection.cameraId ?? "—"}`
+                      ? `${INSPECTION_METHOD_LABEL[station.inspection.method]} · ${station.inspection.cameraId ?? "—"}`
                       : "yok"
                   }
                 />
@@ -239,10 +239,23 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
+/**
+ * Depocunun kullandığı ad, yoksa kodun kendisi.
+ *
+ * "STEEL-COIL hat kenarı stoğunu kontrol edin" cümlesi sahada durup okunacak
+ * bir cümle değil; "Sac rulo" ise doğrudan rafı işaret ediyor. Bilinmeyen bir
+ * kod yüzünden uyarının hiç çıkmaması ise en kötüsü olurdu — o yüzden kod,
+ * adı bulunamazsa olduğu gibi kalıyor.
+ */
+function materialName(config: FactoryDescriptor, id: string): string {
+  return config.materials.find((material) => material.id === id)?.name ?? id;
+}
+
 /** Turn a published machine state into the action an operator should take. */
 function recommendation(
   machine: FactoryFrame["machines"][number],
   station: FactoryDescriptor["stations"][number],
+  config: FactoryDescriptor,
 ): { text: string; tone: "ok" | "warn" | "risk" | "critical" | "blocked" | "idle" } {
   if (machine.status === "DOWN") {
     return {
@@ -258,7 +271,7 @@ function recommendation(
   }
   if (machine.status === "STARVED") {
     return {
-      text: `İşlenecek araç yok. ${station.consumes.map((item) => item.materialId).join(", ") || "Bu istasyonun"} hat kenarı stoğunu ve üst istasyonun durup durmadığını kontrol edin.`,
+      text: `İşlenecek araç yok. ${station.consumes.map((item) => materialName(config, item.materialId)).join(", ") || "Bu istasyonun"} hat kenarı stoğunu ve üst istasyonun durup durmadığını kontrol edin.`,
       tone: "warn",
     };
   }

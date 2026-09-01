@@ -1,8 +1,10 @@
 import type {
+  AgvStatus,
   AlertCode,
   DefectSeverity,
   DefectType,
   EventType,
+  InspectionMethod,
   MachineStatus,
   ProductStatus,
   ShipmentStatus,
@@ -64,6 +66,34 @@ export const SHIPMENT_STATUS_TEXT: Record<ShipmentStatus, Wording> = {
   DISPATCHED: { label: "Sevk Edildi", meaning: "Sahadan çıktı." },
   IN_TRANSIT: { label: "Yolda", meaning: "Yolda." },
   DELIVERED: { label: "Teslim Edildi", meaning: "Teslimat onaylandı." },
+};
+
+/**
+ * Muayenenin nasıl yapıldığı.
+ *
+ * Ekranda "vision" yazıyordu. Kalitede çalışan biri "kamera kontrolü" der;
+ * yöntemin adı, o kontrole kimin/neyin baktığını anlatmalı.
+ */
+export const INSPECTION_METHOD_TEXT: Record<InspectionMethod, string> = {
+  VISION: "Kamera kontrolü",
+  DIMENSIONAL: "Ölçü kontrolü",
+  MANUAL: "Gözle kontrol",
+};
+
+/**
+ * Doli arabasının durumu.
+ *
+ * Panel bu durumu ham haliyle ("idle", "to pickup") yazıyordu; sahadaki hiç
+ * kimse arabanın durumunu böyle söylemez. Yönler de önemli: "Parça Almaya"
+ * boş gidiyor demek, "Hatta Götürüyor" yüklü gidiyor demek — ikisi aynı
+ * hareket değil ve aynı kelimeyle anlatılamaz.
+ */
+export const AGV_STATUS_TEXT: Record<AgvStatus, Wording> = {
+  IDLE: { label: "Boşta", meaning: "Bekleyen taşıma işi yok." },
+  TO_PICKUP: { label: "Parça Almaya", meaning: "Depoya boş gidiyor." },
+  LOADING: { label: "Yükleniyor", meaning: "Depoda parça alıyor." },
+  TO_DROP: { label: "Hatta Götürüyor", meaning: "Yüklü, hücrenin hat kenarına gidiyor." },
+  UNLOADING: { label: "Boşaltıyor", meaning: "Hat kenarına parçayı bırakıyor." },
 };
 
 export const ALERT_TEXT: Record<AlertCode, string> = {

@@ -5,7 +5,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import type { FactoryDescriptor } from "@/lib/api";
 import type { FactoryFrame } from "@/lib/contract";
 import { integer, plantClock } from "@/lib/format";
-import { SHIPMENT_STATE, TONE } from "@/lib/status";
+import { AGV_STATE, SHIPMENT_STATE, TONE } from "@/lib/status";
 import { cn } from "@/lib/utils";
 
 /**
@@ -39,6 +39,12 @@ export function LogisticsBoard({
     })),
   );
   const store = frame.inventory.filter((balance) => !balance.location.startsWith("LINE-SIDE/"));
+
+  // Stok listeleri malzeme *kodunu* yazıyordu: "STEEL-COIL". Depocu ona sac
+  // rulo der. Kod ise ekranda kalmalı, çünkü irsaliye ve etiket onunla eşleşir
+  // — o yüzden ad görünür, kod ipucunda duruyor.
+  const materialNames = new Map(config.materials.map((material) => [material.id, material.name]));
+  const materialName = (id: string) => materialNames.get(id) ?? id;
 
   return (
     <section aria-label="Lojistik" className="grid gap-2 lg:grid-cols-2">
@@ -100,6 +106,7 @@ export function LogisticsBoard({
 
         <div className="grid grid-cols-3 gap-1 px-3 py-2">
           {frame.agvs.map((agv) => {
+            const state = AGV_STATE[agv.status];
             const moving = agv.status !== "IDLE";
             return (
               <Tooltip key={agv.id}>
@@ -121,7 +128,7 @@ export function LogisticsBoard({
                       moving ? TONE.logistics.text : "text-muted-foreground",
                     )}
                   >
-                    {agv.status.replace(/_/g, " ").toLowerCase()}
+                    {state.label}
                   </p>
                   <Meter
                     value={moving ? agv.progress : 0}
@@ -131,9 +138,13 @@ export function LogisticsBoard({
                   />
                 </TooltipTrigger>
                 <TooltipContent className="text-xs">
-                  {agv.id} — {agv.completedTasks} taşıma tamamlandı
+                  {agv.id} — {state.meaning}
+                  <span className="text-muted-foreground block">
+                    {agv.completedTasks} taşıma tamamlandı
+                  </span>
                   {moving ? (
                     <span className="text-muted-foreground block">
+                      {agv.cargoMaterialId ? `${materialName(agv.cargoMaterialId)} · ` : ""}
                       {agv.fromLocation} → {agv.toLocation}
                     </span>
                   ) : null}
@@ -153,8 +164,11 @@ export function LogisticsBoard({
                 key={`${bin.stationId}${bin.materialId}`}
                 className="flex items-baseline justify-between gap-2 text-[10px]"
               >
-                <span className="text-muted-foreground truncate">
-                  {bin.stationId} · {bin.materialId}
+                <span
+                  className="text-muted-foreground truncate"
+                  title={`${bin.stationId} · ${bin.materialId}`}
+                >
+                  {bin.stationId} · {materialName(bin.materialId)}
                 </span>
                 <span
                   className={cn(
@@ -183,8 +197,8 @@ export function LogisticsBoard({
                 key={`${balance.materialId}${balance.location}${balance.status}`}
                 className="flex items-baseline justify-between gap-2 text-[10px]"
               >
-                <span className="text-muted-foreground truncate">
-                  {balance.materialId}
+                <span className="text-muted-foreground truncate" title={balance.materialId}>
+                  {materialName(balance.materialId)}
                   {balance.status === "QUARANTINE" ? (
                     <span className="text-status-risk"> (karantina)</span>
                   ) : null}

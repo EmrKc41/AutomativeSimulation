@@ -50,7 +50,7 @@ npx tsc --noEmit && npx eslint . && npx prettier --check . && npm test
 cd web && npx tsc --noEmit && npx eslint . && npm test && npm run build
 ```
 
-Beklenen: motorda **169 test**, web tarafında **18 test**, hepsi geçer.
+Beklenen: motorda **169 test**, web tarafında **43 test**, hepsi geçer.
 
 ---
 
@@ -166,9 +166,19 @@ git commit -m "Automotive smart factory digital twin: engine, command centre, 3D
   `.next/` altına yazıyor. Gitignore'da; zararsız ama dizini kirletiyor. Sebep:
   arayüz motorun Türkçe sözlüğünü (`src/labels.ts`) içe aktarıyor ve bu dosya
   `web/` dışında.
-- **3D sahne görsel olarak doğrulanmadı.** Geliştirme ortamında tarayıcı paneli
-  kare üretmiyordu; WebGL bağlamı açılıyor, hata yok, yerleştirme matematiği
-  18 testle korunuyor — ama nasıl göründüğüne insan bakmalı.
+- **3D sahnede ölçek uyuşmazlığı var — açık konu.** Konumlar `SCALE = 0.35`
+  ile küçültülüyor, modeller `ASSET_SCALE = 1.05` ile çiziliyor. Sonuç: bir
+  tır planda ~48 metre yer kaplıyor, oysa mal kabul ile giriş kalite arası
+  18 metre. Ekranda tır iki bölgeyi birden aşıyor. `ASSET_SCALE`'i 0,35'e
+  çekmek geometriyi düzeltiyor ama tesis boşalıyor, makineler okunmaz hâle
+  geliyor (denendi, geri alındı). Gerçek çözüm ikisinden biri: plan
+  konumlarını sıkıştırmak — ki `travelTicks` üzerinden **simülasyonu
+  değiştirir** — ya da ölçek farkını bilinçli bir şematik abartı olarak kabul
+  edip tır gibi büyük varlıkları ayrı ölçekte çizmek. Kullanıcı kararı
+  gerektiriyor.
+- **Sahne artık gerçekten görüldü.** Tarayıcı paneli kare üretiyor; genel
+  görünüm, mal kabul ve sevkiyat ekran görüntüleriyle doğrulandı. Sahne koyu;
+  makineler zeminden zor ayrılıyor — aydınlatma hâlâ elden geçmedi.
 - **Kalıcılık yok.** Host tek koşuyu bellekte tutar; sunucu yeniden başlarsa
   koşu sıfırlanır. Faz 8'de bilinçli olarak ele alınmadı: ölçülen arızalar
   çökme ve sınırsız büyümeydi, kalıcılık değil.
@@ -545,9 +555,51 @@ araç aynı yerden geçerdi ve sahada ilk kaldırılacak şey odur.
 altındaki bütün işi gizleyen düz bir levha gibi duruyordu. Saçak, göstermesi
 gereken şeyi gizliyorsa yanlış boyuttadır.
 
+### Ara oturum — çalıştırıp bakma turu (düzeltmeler)
+
+Kullanıcı "programı çalıştır da bakalım" dedi; sistem ayağa kaldırıldı ve
+bakarken dört gerçek kusur çıktı. Hepsi düzeltildi ve teste bağlandı.
+
+**1. Pano donuyordu — en ciddisi.** `use-factory.ts` çizimi yalnızca
+`requestAnimationFrame` ile zamanlıyordu. Sekme kare üretmeyi bıraktığında rAF
+hiç ateşlenmiyor, elde kalan dolu tutamak yüzünden sonraki _bütün_ çerçeveler
+"zaten bir çizim bekliyor" diye sessizce atılıyordu. Soket açık, bağlantı
+"CANLI", ekran donuk: pano kendinden emin biçimde 5 saat önceki fabrikayı
+gösteriyordu. Komuta merkezi için en kötü arıza bu. Zamanlama
+`lib/frame-scheduler.ts`'e çıkarıldı; artık rAF **ve** bir güvenlik
+zamanlayıcısı birlikte kuruluyor, hangisi önce gelirse çizim onunla oluyor.
+Sekmeye dönüldüğünde de bekleyen çerçeve hemen çiziliyor. 9 test; eski
+davranış geri konduğunda 3'ü düşüyor (mutasyonla doğrulandı).
+
+**2. "Genel" görünüm geneli göstermiyordu.** Kamera `[0, 26, 26]` diye elle
+yazılmıştı ve yerleşim revizyonundan sonra geride kaldı: mal kabul solda,
+sevkiyat sağda ekran dışındaydı. Artık `ZONES`'un gerçek sınırından
+hesaplanıyor. "Sevkiyat" görünümü de eski koordinatta kalmıştı, sahayı değil
+20 metre solundaki boşluğu gösteriyordu; adlandırılmış alanların kamerası artık
+tesisin konum tablosundan okunuyor. **"Mal Kabul" görünümü eklendi.** Eski test
+yalnızca "koordinat sonlu mu" diye baktığı için hatayı kaçırmıştı; yeni test
+her bölgenin dört köşesini kameranın görüş piramidine geri yansıtıyor.
+
+**3. Sevkiyat binası ters duruyordu.** Model mal kabulün aynadaki görüntüsü
+olarak yapılmıştı, yani çalışma yüzü −X'e bakıyordu; bina sahanın −X tarafında
+durduğu için kapılar sahaya değil boşluğa bakıyordu ve ekranda düz bir levha
+gibi görünüyordu. π döndürüldü; kapılar, sarı şeritler ve yükleme platformu
+göründü.
+
+**4. Ekranda İngilizce kaçakları.** Doli durumu ham haliyle yazılıyordu
+("idle", "to pickup"); stok listeleri malzeme _adı_ yerine kodunu gösteriyordu
+("STEEL-COIL", oysa depocu "Sac rulo" der); muayene yöntemi "vision" diye
+geçiyordu; panel kapatma düğmesi "Close" diyordu. `AGV_STATUS_TEXT` ve
+`INSPECTION_METHOD_TEXT` sözlüğe eklendi. Kodlar ekrandan kalkmadı, ipucuna
+taşındı — irsaliye ve etiket onunla eşleşiyor.
+
+Ayrıca: bağlantı koptuğunda yeniden deneme gecikmesi sıfırlanmıyordu, sağlıklı
+bir oturumda birkaç kesintiden sonra kalıcı olarak 8 saniyeye takılıyordu.
+
 ### Sırada ne var
 
-Şartnamenin Faz 2'si: giriş kalite kontrol + insan silüetleri. Motor tarafı
+Önce yukarıdaki **ölçek uyuşmazlığı** kararı (bkz. bölüm 6) — sahnenin geri
+kalanı ona bağlı. Sonra şartnamenin Faz 2'si: giriş kalite kontrol + insan silüetleri. Motor tarafı
 zaten hazır (`MATERIAL_ACCEPTED` / `MATERIAL_QUARANTINED` olayları var), iş
 çoğunlukla görselleştirme. Sonra Faz 3 (depo), Faz 4-5 (istasyon operasyonları
 — burada rota genişletmesi devreye girer).

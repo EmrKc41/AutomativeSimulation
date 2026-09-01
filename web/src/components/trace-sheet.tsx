@@ -13,7 +13,14 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { fetchTraceability, type TraceabilityBundle } from "@/lib/api";
 import { duration, percent, plantClock } from "@/lib/format";
-import { PRODUCT_STATE, TONE, defectLabel, eventLabel, eventTone } from "@/lib/status";
+import {
+  INSPECTION_METHOD_LABEL,
+  PRODUCT_STATE,
+  TONE,
+  defectLabel,
+  eventLabel,
+  eventTone,
+} from "@/lib/status";
 import { cn } from "@/lib/utils";
 
 /**
@@ -163,7 +170,7 @@ export function TraceSheet({
                           <span className="font-heading">{inspection.stationId}</span>
                           <span className="text-muted-foreground">
                             {" "}
-                            {inspection.method.toLowerCase()} · {inspection.cameraId ?? "no camera"}
+                            {INSPECTION_METHOD_LABEL[inspection.method]} · {inspection.cameraId ?? "kamerasız"}
                           </span>
                         </span>
                         <span className="flex shrink-0 items-center gap-2">

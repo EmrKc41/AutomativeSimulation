@@ -18,6 +18,7 @@ import type { FactoryDescriptor } from "@/lib/api";
 import type { FactoryFrame, Machine, StationConfig } from "@/lib/contract";
 import {
   SCALE,
+  SCENE_FOV_DEG,
   ZONES,
   planPosition,
   cameraBookmarks,
@@ -61,7 +62,7 @@ export function FactoryScene(props: FactorySceneProps) {
       // would double the cost for a difference nobody would name.
       shadows
       dpr={[1, 1.75]}
-      camera={{ position: [0, 24, 30], fov: 40, near: 0.1, far: 400 }}
+      camera={{ position: [0, 24, 30], fov: SCENE_FOV_DEG, near: 0.1, far: 400 }}
       // A dark hall: the scene must sit on the same ground as the rest of the UI.
       onCreated={({ gl }) => gl.setClearColor("#14121f")}
     >

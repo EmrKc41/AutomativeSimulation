@@ -3,6 +3,8 @@ import { describe, expect, test } from "vitest";
 import type { FactoryDescriptor } from "@/lib/api";
 import type { Agv, FactoryFrame, Machine, ProductUnit, Shipment } from "@/lib/contract";
 import {
+  SCALE,
+  SCENE_FOV_DEG,
   ZONES,
   bufferSlot,
   cameraBookmarks,
@@ -455,6 +457,76 @@ describe("scene vocabulary", () => {
     }
   });
 
+  /**
+   * Genel görünüm gerçekten geneli göstermeli.
+   *
+   * Önceki test yalnızca koordinatların sonlu olup olmadığına bakıyordu; bu
+   * yüzden yerleşim büyüdüğünde kamera olduğu yerde kaldı ve mal kabul ile
+   * sevkiyat ekranın dışına çıktı — testler yeşilken. Burada bölgelerin her
+   * köşesi kameranın görüş piramidine geri yansıtılıyor: hesabın nasıl
+   * yapıldığından bağımsız bir kontrol.
+   */
+  test("the overview frames every zone, including receiving and shipping", () => {
+    const overview = cameraBookmarks(config).find((mark) => mark.id === "overview")!;
+
+    const forward = normalise(subtract(overview.target, overview.position));
+    const right = normalise(cross(forward, [0, 1, 0]));
+    const up = cross(right, forward);
+
+    const halfV = Math.tan((SCENE_FOV_DEG / 2) * (Math.PI / 180));
+    // En dar makul ekran; daha geniş bir ekranda pay yalnızca artar.
+    const halfH = Math.tan(Math.atan(halfV * (16 / 9)));
+
+    for (const zone of ZONES) {
+      const [x0, y0, x1, y1] = zone.rect;
+      for (const [planX, planY] of [
+        [x0, y0],
+        [x1, y0],
+        [x0, y1],
+        [x1, y1],
+      ] as const) {
+        const corner = toWorld(planX, planY);
+        const v = subtract(corner, overview.position);
+        const depth = dot(v, forward);
+
+        expect(depth, `${zone.label} kameranın arkasında`).toBeGreaterThan(0);
+        expect(Math.abs(dot(v, right)) / depth, `${zone.label} yanlardan taşıyor`).toBeLessThanOrEqual(
+          halfH,
+        );
+        expect(Math.abs(dot(v, up)) / depth, `${zone.label} üstten/alttan taşıyor`).toBeLessThanOrEqual(
+          halfV,
+        );
+      }
+    }
+  });
+
+  /**
+   * Alan görünümleri alanın kendisini göstermeli.
+   *
+   * "Sevkiyat" görünümü yerleşim revizyonundan sonra eski koordinatta kalmış,
+   * sahayı değil onun 20 metre solundaki boşluğu gösteriyordu. Adlandırılmış
+   * bir alanın kamerası artık tesisin konum tablosundan okunduğu için elle
+   * yazılmış bir sayı geride kalamaz.
+   */
+  test.each([
+    ["receiving", "RECEIVING-DOCK"],
+    ["shipping", "SHIPPING-YARD"],
+  ])("the %s view actually looks at %s", (bookmarkId, location) => {
+    const mark = cameraBookmarks(config).find((candidate) => candidate.id === bookmarkId)!;
+    const [x, , z] = toWorld(...planPosition(config, location));
+
+    expect(mark.target[0]).toBeCloseTo(x, 6);
+    expect(mark.target[2]).toBeCloseTo(z, 6);
+    // Yakın plan: alanı dolduracak kadar yakın, içine girmeyecek kadar uzak.
+    const distance = Math.hypot(
+      mark.position[0] - x,
+      mark.position[1],
+      mark.position[2] - z,
+    );
+    expect(distance).toBeGreaterThan(4 * SCALE);
+    expect(distance).toBeLessThan(40);
+  });
+
   test("every state the scene can render has both a colour and a word", () => {
     const states = [
       ...Object.values(MACHINE_STATE),
@@ -699,3 +771,28 @@ describe("yerleşim revizyonu: bağımsız alanlar, düz tırlar, tanımlı güz
     expect(yard - store).toBeGreaterThanOrEqual(24);
   });
 });
+
+// --- vector helpers, kept local to the test ---------------------------------
+
+type Vec = readonly [number, number, number];
+
+function subtract(a: Vec, b: Vec): Vec {
+  return [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+}
+
+function dot(a: Vec, b: Vec): number {
+  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+}
+
+function cross(a: Vec, b: Vec): Vec {
+  return [
+    a[1] * b[2] - a[2] * b[1],
+    a[2] * b[0] - a[0] * b[2],
+    a[0] * b[1] - a[1] * b[0],
+  ];
+}
+
+function normalise(a: Vec): Vec {
+  const length = Math.hypot(...a);
+  return [a[0] / length, a[1] / length, a[2] / length];
+}

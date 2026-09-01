@@ -51,7 +51,17 @@ export function ShippingYard({
  */
 function ShippingBuilding({ position }: { position: readonly [number, number, number] }) {
   const model = useModel(MODEL.shippingBuilding);
-  return <primitive object={model} position={[position[0], 0, position[2]]} scale={ASSET_SCALE} />;
+  // Model, mal kabulün aynadaki görüntüsü olarak yapıldı: çalışma yüzü −X'e
+  // bakıyor. Bina sahanın −X tarafında durduğu için, döndürülmeden konduğunda
+  // kapılar sahaya değil boşluğa bakıyordu — ekranda düz bir levha.
+  return (
+    <primitive
+      object={model}
+      position={[position[0], 0, position[2]]}
+      rotation={[0, Math.PI, 0]}
+      scale={ASSET_SCALE}
+    />
+  );
 }
 
 function Carrier({ carrier, showLabels }: { carrier: PlacedCarrier; showLabels: boolean }) {

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { WS_URL } from "@/lib/api";
+import { FrameScheduler, browserClock } from "@/lib/frame-scheduler";
 import type { FactoryEvent, FactoryFrame } from "@/lib/contract";
 
 export type ConnectionState = "connecting" | "live" | "reconnecting" | "offline";
@@ -41,18 +42,6 @@ const HISTORY_LENGTH = 240;
 /** A running clock that goes quiet for this long is reported as stale, not live. */
 const STALE_AFTER_MS = 4000;
 const RECONNECT_DELAYS_MS = [500, 1000, 2000, 4000, 8000];
-/** Coalescing interval used while the tab is hidden and rAF never fires. */
-const HIDDEN_FLUSH_MS = 400;
-
-function cancelFlush(
-  handle: { current: number | null },
-  mode: { current: "raf" | "timeout" },
-): void {
-  if (handle.current === null) return;
-  if (mode.current === "raf") cancelAnimationFrame(handle.current);
-  else window.clearTimeout(handle.current);
-  handle.current = null;
-}
 
 /**
  * Subscribe to the twin's frame stream.
@@ -75,12 +64,10 @@ export function useFactoryStream(): FactoryStream {
   const socketRef = useRef<WebSocket | null>(null);
   const pendingFrame = useRef<FactoryFrame | null>(null);
   const pendingEvents = useRef<FactoryEvent[]>([]);
-  const flushHandle = useRef<number | null>(null);
-  const flushMode = useRef<"raf" | "timeout">("raf");
+  const scheduler = useRef<FrameScheduler | null>(null);
   const lastSequence = useRef<{ simulationId: string; sequence: number } | null>(null);
 
   const flush = useCallback(() => {
-    flushHandle.current = null;
     const next = pendingFrame.current;
     if (!next) return;
     pendingFrame.current = null;
@@ -110,21 +97,31 @@ export function useFactoryStream(): FactoryStream {
   /**
    * Coalesce bursts into one render.
    *
-   * While the tab is visible this rides `requestAnimationFrame`, which caps the
-   * work at the display rate. While it is hidden rAF never fires, so a slower
-   * timer takes over — otherwise a backgrounded command centre would sit on a
-   * loading state forever instead of simply updating less often.
+   * The decision of *how* to coalesce lives in `FrameScheduler`, because the
+   * way this used to be written could wedge the whole stream: it armed a
+   * `requestAnimationFrame` and nothing else, so a tab that stopped compositing
+   * left the handle set forever and every later frame was dropped as "a render
+   * is already pending". The socket stayed open and the board stayed
+   * confidently wrong. See `frame-scheduler.test.ts`.
    */
   const schedule = useCallback(() => {
-    if (flushHandle.current !== null) return;
-    if (typeof document !== "undefined" && document.hidden) {
-      flushHandle.current = window.setTimeout(flush, HIDDEN_FLUSH_MS);
-      flushMode.current = "timeout";
-      return;
-    }
-    flushMode.current = "raf";
-    flushHandle.current = requestAnimationFrame(flush);
+    scheduler.current ??= new FrameScheduler(browserClock, flush);
+    scheduler.current.schedule();
   }, [flush]);
+
+  /**
+   * Coming back to the tab must show the plant as it is now.
+   *
+   * Without this the operator sees the last frame that happened to be drawn
+   * before they looked away, until the next one arrives.
+   */
+  useEffect(() => {
+    const onVisible = () => {
+      if (!document.hidden) scheduler.current?.flushNow();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, []);
 
   const accept = useCallback(
     (incoming: FactoryFrame, replaceHistory: boolean) => {
@@ -154,11 +151,17 @@ export function useFactoryStream(): FactoryStream {
 
   useEffect(() => {
     let disposed = false;
+    // Whether *this* socket ever reached the engine, which decides how long to
+    // wait before the next try. `attempt` only ever grows, so without this a
+    // session that survived five blips would sit on the eight-second delay for
+    // the rest of the shift — the longest wait, applied to the healthiest link.
+    let everOpened = false;
     const socket = new WebSocket(WS_URL);
     socketRef.current = socket;
 
     socket.onopen = () => {
       if (disposed) return;
+      everOpened = true;
       setConnection("live");
     };
 
@@ -180,7 +183,9 @@ export function useFactoryStream(): FactoryStream {
     socket.onclose = () => {
       if (disposed) return;
       setConnection("reconnecting");
-      const delay = RECONNECT_DELAYS_MS[Math.min(attempt, RECONNECT_DELAYS_MS.length - 1)] ?? 8000;
+      const delay = everOpened
+        ? RECONNECT_DELAYS_MS[0]
+        : (RECONNECT_DELAYS_MS[Math.min(attempt, RECONNECT_DELAYS_MS.length - 1)] ?? 8000);
       window.setTimeout(() => {
         if (!disposed) setAttempt((value) => value + 1);
       }, delay);
@@ -192,7 +197,7 @@ export function useFactoryStream(): FactoryStream {
 
     return () => {
       disposed = true;
-      cancelFlush(flushHandle, flushMode);
+      scheduler.current?.cancel();
       socket.close();
     };
   }, [accept, attempt]);

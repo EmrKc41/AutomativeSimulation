@@ -8,6 +8,7 @@
  */
 export type {
   Agv,
+  AgvStatus,
   InboundTruck,
   Alert,
   AndonState,
@@ -22,6 +23,7 @@ export type {
   FactoryFrame,
   FactoryMetrics,
   Inspection,
+  InspectionMethod,
   InventorySummary,
   Machine,
   MachineMetric,

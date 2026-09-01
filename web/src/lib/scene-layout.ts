@@ -122,6 +122,53 @@ export interface CameraBookmark {
   readonly target: World;
 }
 
+/**
+ * Sahnenin dikey görüş açısı.
+ *
+ * Sahne de bu sabiti kullanıyor. İki yerde ayrı ayrı yazılsaydı biri
+ * değiştiğinde genel görünüm sessizce tesisi kırpardı — bu dosyadaki kamera
+ * hatası da zaten böyle bir kopukluktan doğmuştu.
+ */
+export const SCENE_FOV_DEG = 40;
+/** Hesabın dayandığı en dar makul ekran oranı; daha geniş ekranda pay artar. */
+const OVERVIEW_ASPECT = 16 / 9;
+/** Kenarlarda bırakılan pay: bina cepheleri tam sınıra dayanmasın. */
+const OVERVIEW_MARGIN = 1.12;
+/** Kameranın yere bakış açısı. Dik bakış plan çizimine, alçak bakış tünele benzer. */
+const OVERVIEW_PITCH_DEG = 38;
+
+/**
+ * Bütün tesisi çerçeveleyen görünüm.
+ *
+ * Bu nokta elle yazılmıştı ve yerleşim revizyonundan sonra sessizce yanlış
+ * kaldı: mal kabul solda, sevkiyat sağda ekranın dışındaydı — yani "genel
+ * görünüm" tesisin genelini göstermiyordu. Artık bölgelerin gerçek sınırından
+ * hesaplanıyor, çünkü "her şey görünsün" bir koordinat değil bir kural; bir
+ * sonraki yerleşim değişikliğinde de kendiliğinden doğru kalmalı.
+ */
+function overviewBookmark(): CameraBookmark {
+  const x0 = Math.min(...ZONES.map((zone) => zone.rect[0]));
+  const x1 = Math.max(...ZONES.map((zone) => zone.rect[2]));
+  const y0 = Math.min(...ZONES.map((zone) => zone.rect[1]));
+  const y1 = Math.max(...ZONES.map((zone) => zone.rect[3]));
+
+  const [centreX, , centreZ] = toWorld((x0 + x1) / 2, (y0 + y1) / 2);
+  const halfWidth = ((x1 - x0) / 2) * SCALE;
+
+  // Tesis hattı boyunca uzun; kırpılma her zaman yatayda olur, o yüzden mesafe
+  // yatay görüş açısından çıkarılıyor.
+  const halfFov = Math.atan(Math.tan((SCENE_FOV_DEG / 2) * (Math.PI / 180)) * OVERVIEW_ASPECT);
+  const distance = (halfWidth / Math.tan(halfFov)) * OVERVIEW_MARGIN;
+  const pitch = OVERVIEW_PITCH_DEG * (Math.PI / 180);
+
+  return {
+    id: "overview",
+    label: "Genel",
+    position: [centreX, distance * Math.sin(pitch), centreZ + distance * Math.cos(pitch)],
+    target: [centreX, 0, centreZ],
+  };
+}
+
 /** Named viewpoints an operator would actually ask for. */
 export function cameraBookmarks(config: FactoryDescriptor): readonly CameraBookmark[] {
   const look = (stationId: string, offset: World): CameraBookmark["position"] => {
@@ -132,9 +179,25 @@ export function cameraBookmarks(config: FactoryDescriptor): readonly CameraBookm
     const [x, , z] = stationWorld(config, stationId);
     return [x, 0.6, z];
   };
+  // Mal kabul ve sevkiyat istasyon değil, adlandırılmış birer alan. Kamera
+  // noktaları elle yazılıydı ve alanlar taşındığında geride kaldı; artık
+  // tesisin kendi konum tablosundan okunuyor.
+  // Mesafeler bilerek büyük: bina cepheleri ve tır, konumların ölçeğine göre
+  // iri modellendi (bkz. `ASSET_SCALE`), yakın bir kamera nesnenin *içinde*
+  // kalıyor. Bu, ölçek uyuşmazlığını çözmüyor, yalnızca görünümü kullanılabilir
+  // tutuyor.
+  const area = (location: string, offset: World) => {
+    const [planX, planY] = planPosition(config, location);
+    const [x, , z] = toWorld(planX, planY);
+    return {
+      position: [x + offset[0], offset[1], z + offset[2]] as World,
+      target: [x, 0.6, z] as World,
+    };
+  };
 
   return [
-    { id: "overview", label: "Genel", position: [0, 26, 26], target: [0, 0, 0] },
+    overviewBookmark(),
+    { id: "receiving", label: "Mal Kabul", ...area("RECEIVING-DOCK", [-12, 16, 30]) },
     { id: "press", label: "Pres", position: look("PRESS-01", [-5, 5, 8]), target: at("PRESS-01") },
     {
       id: "body",
@@ -161,7 +224,7 @@ export function cameraBookmarks(config: FactoryDescriptor): readonly CameraBookm
       position: look("REWORK-01", [-4, 5, 8]),
       target: at("REWORK-01"),
     },
-    { id: "shipping", label: "Sevkiyat", position: [26, 8, 12], target: [24, 0.6, -2.8] },
+    { id: "shipping", label: "Sevkiyat", ...area("SHIPPING-YARD", [12, 16, 30]) },
   ];
 }
 

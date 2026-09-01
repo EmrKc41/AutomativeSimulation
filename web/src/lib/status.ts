@@ -1,6 +1,8 @@
 import {
+  AGV_STATUS_TEXT,
   ALERT_TEXT,
   EVENT_TEXT,
+  INSPECTION_METHOD_TEXT,
   MACHINE_STATUS_TEXT,
   PAYLOAD_TEXT,
   PRODUCT_STATUS_TEXT,
@@ -9,8 +11,10 @@ import {
 } from "@twin/labels";
 
 import type {
+  AgvStatus,
   AlertCode,
   FactoryEvent,
+  InspectionMethod,
   MachineStatus,
   ProductStatus,
   ShipmentStatus,
@@ -178,6 +182,18 @@ const SHIPMENT_TONE: Record<ShipmentStatus, StatusTone> = {
 };
 
 export const SHIPMENT_STATE = describe(SHIPMENT_STATUS_TEXT, SHIPMENT_TONE);
+
+const AGV_TONE: Record<AgvStatus, StatusTone> = {
+  IDLE: "idle",
+  TO_PICKUP: "logistics",
+  LOADING: "logistics",
+  TO_DROP: "logistics",
+  UNLOADING: "logistics",
+};
+
+export const AGV_STATE = describe(AGV_STATUS_TEXT, AGV_TONE);
+
+export const INSPECTION_METHOD_LABEL: Record<InspectionMethod, string> = INSPECTION_METHOD_TEXT;
 
 export const ALERT_LABEL: Record<AlertCode, string> = ALERT_TEXT;
 
