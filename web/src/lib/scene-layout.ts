@@ -574,7 +574,24 @@ const TURN_OFFSET_X = 20;
  */
 const TURN_BLEND = 0.16;
 
-/** Rampada tırın durduğu nokta — rampanın önü, hattın dışında. */
+/**
+ * Tırın park ettiği nokta: sahanın köşesi.
+ *
+ * Tır **binaya girmiyor**. Önceki sürümde rampaya kadar sürüyordu ve mal kabul
+ * cephesinin içine girmiş gibi duruyordu; sahada da öyle olmaz — dorse
+ * boşaltılacağı yere yanaşır, malı içeri forklift taşır.
+ *
+ * Köşenin hemen sağında: dönüşü tamamlayacak kadar ileride, binaya değmeyecek
+ * kadar geride.
+ */
+const PARK_OFFSET_X = 5;
+
+export function truckParkWorld(config: FactoryDescriptor): World {
+  const [x, , z] = turnWorld(config);
+  return [x + PARK_OFFSET_X, 0, z];
+}
+
+/** Rampada malzemenin indirildiği nokta — rampanın önü, hattın dışında. */
 function dockWorld(config: FactoryDescriptor): World {
   const [x, y] = planPosition(config, "RECEIVING-DOCK");
   const [wx, , wz] = toWorld(x, y);
@@ -613,7 +630,99 @@ export function securityGatePlacement(config: FactoryDescriptor): World {
  * görünüyordu — oysa aralarında bir yol var.
  */
 export function truckRoute(config: FactoryDescriptor): readonly World[] {
-  return [gateWorld(config), turnWorld(config), dockWorld(config)];
+  return [gateWorld(config), turnWorld(config), truckParkWorld(config)];
+}
+
+/**
+ * Forkliftin seferi: tırın park yerinden mal kabul rampasına.
+ *
+ * Tır köşede duruyor, malzeme içeri forkliftle giriyor. Bu güzergâh sahnenin
+ * uydurduğu bir şey değil, tırın boşaltılması sırasında gerçekten olması
+ * gereken hareket — motor boşaltmayı bitirmeden depoya stok da düşmüyor.
+ */
+/**
+ * Forkliftin çalıştığı şerit, tırın **yanında**.
+ *
+ * İlk sürümde şerit tırın kendi ekseni üzerindeydi: forklift, yükü aldığı anda
+ * dorsenin içinde kalıyor, sonra tırın gövdesinin içinden geçip çıkıyordu.
+ * Gerçekte forklift dorseye yandan yanaşır.
+ *
+ * Şerit binaların tarafında (−Z): hem tırla çakışmıyor hem de hareket
+ * kameradan görünüyor.
+ */
+const FORKLIFT_LANE_Z = -3.4;
+
+export function forkliftRoute(config: FactoryDescriptor): readonly World[] {
+  const park = truckParkWorld(config);
+  const [dockX, , ] = dockWorld(config);
+  const z = park[2] + FORKLIFT_LANE_Z;
+  // Yükleme noktası dorsenin hizasında: kabin +X'te, dorse geride.
+  return [
+    [park[0] - 5, 0, z],
+    [dockX, 0, z],
+  ];
+}
+
+export interface PlacedForklift {
+  readonly id: string;
+  /** Yükün alındığı yer: tırın park ettiği nokta. */
+  readonly from: World;
+  /** Yükün bırakıldığı yer: mal kabul. */
+  readonly to: World;
+  /** Aynı anda birden fazla forklift varsa yan yana çalışsınlar. */
+  readonly lane: number;
+}
+
+/**
+ * Boşaltılan her tır için bir forklift.
+ *
+ * Motorun söylediği şey şu: bu tır **şu anda boşaltılıyor** ve boşaltma bitene
+ * kadar depoya stok düşmüyor. Forkliftin var olması, nereden nereye taşıdığı ve
+ * iş bitince ortadan kalkması bunun doğrudan karşılığı.
+ *
+ * Kaç sefer yaptığı ise motorun modelinde yok — orada boşaltma tek bir süre.
+ * O yüzden gidiş-gelişin *temposu* sahnede üretiliyor ve öyle olduğu burada
+ * yazıyor. Denemesi yapıldı: sefer sayısını yayınlanan ilerlemeye bağlamak,
+ * boşaltma üç dakika sürdüğü için forklifti her karede tam sefer başında
+ * yakalıyor ve araç yerinde donuyordu.
+ */
+export function placeForklifts(config: FactoryDescriptor, frame: FactoryFrame): PlacedForklift[] {
+  const [park, dock] = forkliftRoute(config);
+  if (!park || !dock) return [];
+
+  return frame.trucks
+    .filter((truck) => truck.status === "UNLOADING")
+    .map((truck, index) => ({
+      id: `FL-${truck.id}`,
+      from: park,
+      to: dock,
+      lane: index * 2.4,
+    }));
+}
+
+/**
+ * Bir seferin `cycle` (0..1) anındaki forklift durumu.
+ *
+ * İlk yarısı **dolu gidiş**, ikinci yarısı **boş dönüş**. Yüklü olup olmaması
+ * süs değil: hangi yönün iş, hangisinin dönüş olduğunu söyleyen tek şey.
+ * Hareketin kendisi burada, bileşende değil — çünkü test edilebilecek olan
+ * kısım bu.
+ */
+export function forkliftAt(
+  assignment: PlacedForklift,
+  cycle: number,
+): { position: World; heading: number; laden: boolean } {
+  const tur = ((cycle % 1) + 1) % 1;
+  const donuyor = tur >= 0.5;
+  const t = donuyor ? 1 - (tur - 0.5) * 2 : tur * 2;
+  const { from, to, lane } = assignment;
+
+  return {
+    position: [from[0] + (to[0] - from[0]) * t, 0, from[2] + (to[2] - from[2]) * t + lane],
+    // Model +X'e bakıyor; dönüşte arkasını dönüyor.
+    heading: donuyor ? Math.PI : 0,
+    laden: !donuyor,
+  };
 }
 
 /**
@@ -629,7 +738,9 @@ export function truckRoute(config: FactoryDescriptor): readonly World[] {
 function truckOnRoute(config: FactoryDescriptor, t: number): { position: World; heading: number } {
   const gate = gateWorld(config);
   const corner = turnWorld(config);
-  const dock = dockWorld(config);
+  // Tır **park yerine** gidiyor, rampaya değil: sahada durur, malı içeri
+  // forklift taşır.
+  const dock = truckParkWorld(config);
 
   const girisUzunluk = Math.abs(gate[2] - corner[2]);
   const yanasmaUzunluk = Math.abs(dock[0] - corner[0]);

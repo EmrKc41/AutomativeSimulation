@@ -32,6 +32,7 @@ export const MODEL = {
   dock: "/models/rampa.glb",
   securityGate: "/models/guvenlik.glb",
   barrier: "/models/bariyer.glb",
+  forklift: "/models/forklift.glb",
   pallet: "/models/palet.glb",
   rack: "/models/raf.glb",
   conveyor: "/models/konveyor.glb",

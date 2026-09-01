@@ -1,7 +1,9 @@
 "use client";
 
 import { Html } from "@react-three/drei";
-import { useMemo } from "react";
+import { useFrame } from "@react-three/fiber";
+import { useMemo, useRef } from "react";
+import type { Group } from "three";
 
 import type { FactoryDescriptor } from "@/lib/api";
 import type { FactoryFrame } from "@/lib/contract";
@@ -10,10 +12,13 @@ import {
   dockPlacement,
   incomingQcPlacement,
   entryGateOpenness,
+  forkliftAt,
+  placeForklifts,
   placeTrucks,
   productionGatePlacement,
   quarantinePlacement,
   securityGatePlacement,
+  type PlacedForklift,
   type PlacedTruck,
 } from "@/lib/scene-layout";
 import { TONE } from "@/lib/status";
@@ -51,6 +56,8 @@ export function ReceivingYard({
   // Bariyerin açıklığı uydurulmuyor: yolda kapıya yaklaşan tırın konumundan
   // hesaplanıyor, yani kol gerçekten geçen bir araç için kalkıyor.
   const gateOpen = useMemo(() => entryGateOpenness(config, frame), [config, frame]);
+  // Tır köşede duruyor; malzemeyi içeri forklift taşıyor.
+  const forklifts = useMemo(() => placeForklifts(config, frame), [config, frame]);
 
   // Karantinadaki parti sayısı — boşsa alan da boş görünmeli.
   const quarantined = frame.inventory.filter((balance) => balance.status === "QUARANTINE").length;
@@ -69,6 +76,9 @@ export function ReceivingYard({
       <Quarantine position={quarantine} lots={quarantined} />
       {trucks.map((truck) => (
         <Truck key={truck.id} truck={truck} showLabels={showLabels} />
+      ))}
+      {forklifts.map((forklift) => (
+        <Forklift key={forklift.id} forklift={forklift} />
       ))}
     </group>
   );
@@ -161,15 +171,9 @@ function Dock({ position }: { position: readonly [number, number, number] }) {
 function Truck({ truck, showLabels }: { truck: PlacedTruck; showLabels: boolean }) {
   const model = useModel(MODEL.truck);
 
-  // Boşaltılan yük: ilerlemeye göre tırdan rampaya taşınıyor. Tek palet
-  // gösteriliyor çünkü söylenen şey "boşaltılıyor", "kaç palet" değil.
-  const unloading = truck.status === "UNLOADING";
-
   return (
     <group position={truck.position} rotation={[0, truck.heading, 0]}>
       <primitive object={model} scale={ASSET_SCALE} />
-
-      {unloading ? <UnloadedPallet progress={truck.unloadProgress} /> : null}
 
       {showLabels ? (
         <Html position={[0, 2.6, 0]} center distanceFactor={26} zIndexRange={[10, 0]}>
@@ -185,13 +189,49 @@ function Truck({ truck, showLabels }: { truck: PlacedTruck; showLabels: boolean 
   );
 }
 
-/** Boşaltılan palet: dorseden rampaya doğru kayıyor. */
-function UnloadedPallet({ progress }: { progress: number }) {
-  const model = useModel(MODEL.pallet);
-  // Dorsenin arkasından çıkıp rampanın üstüne: yalnızca yatayda hareket,
-  // çünkü forklift modellenmiş değil ve olmayan bir şeyi ima etmemeli.
-  const z = -1.4 - progress * 2.2;
-  return <primitive object={model} position={[-1.6, 0.5, z]} scale={ASSET_SCALE} />;
+/**
+ * Forklift: malzemeyi tırdan mal kabule taşıyan şey.
+ *
+ * Önceden palet, dorsenin arkasından rampaya doğru kendi kendine kayıyordu —
+ * kodun yorumu bunu "forklift modellenmiş değil, olmayan bir şeyi ima
+ * etmemeli" diye kabul ediyordu. Artık taşıyan şey belli, ve seferleri
+ * motorun saydığı boşaltma dakikaları kadar.
+ *
+ * Dolu giderken çatalda palet var, boş dönerken yok. Bu ayrım süs değil:
+ * hangi yönün iş, hangisinin dönüş olduğunu söyleyen tek şey.
+ */
+function Forklift({ forklift }: { forklift: PlacedForklift }) {
+  const model = useModel(MODEL.forklift);
+  const pallet = useModel(MODEL.pallet);
+  const govde = useRef<Group>(null);
+  const yuk = useRef<Group>(null);
+
+  // Bir gidiş-dönüş bu kadar sürüyor. Motorun modelinde sefer sayısı yok
+  // (orada boşaltma tek bir süre), o yüzden tempo burada — ve öyle olduğu
+  // `placeForklifts` içinde yazıyor.
+  const SEFER_SANIYE = 4.5;
+
+  useFrame((state) => {
+    const { position, heading, laden } = forkliftAt(
+      forklift,
+      state.clock.elapsedTime / SEFER_SANIYE,
+    );
+    if (govde.current) {
+      govde.current.position.set(position[0], position[1], position[2]);
+      govde.current.rotation.y = heading;
+    }
+    if (yuk.current) yuk.current.visible = laden;
+  });
+
+  return (
+    <group ref={govde}>
+      <primitive object={model} scale={ASSET_SCALE} />
+      {/* Çatalın üstünde: modelde çatallar +X'te 1.25, yerden 0.2 yükseklikte. */}
+      <group ref={yuk} position={[1.25 * ASSET_SCALE, 0.28 * ASSET_SCALE, 0]}>
+        <primitive object={pallet} scale={ASSET_SCALE} />
+      </group>
+    </group>
+  );
 }
 
 const TRUCK_TEXT: Record<PlacedTruck["status"], string> = {

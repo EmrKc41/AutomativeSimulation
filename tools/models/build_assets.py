@@ -1060,6 +1060,93 @@ def bariyer(klasor):
     disa_aktar("bariyer", klasor)
 
 
+def forklift(klasor):
+    """
+    Forklift — malzemeyi tırdan mal kabule taşıyan şey.
+
+    Önceden palet, tırın arkasından rampaya doğru kendi kendine kayıyordu;
+    kodun yorumu da bunu "forklift modellenmiş değil, olmayan bir şeyi ima
+    etmemeli" diye kabul ediyordu. Artık taşıyan şey belli.
+
+    Forklifti forklift yapan üç parça: **direk** (ön taraftaki dikey raylar),
+    **çatallar** ve sürücünün üstündeki **koruma kafesi**. Kafes olmadan
+    küçük bir traktöre benziyor; sahada ise kafes zorunludur, çünkü yük
+    yukarıdan düşer.
+
+    Sürüş yönü +X, çatallar önde.
+    """
+    temizle()
+    parcalar = []
+
+    # Gövde ve karşı ağırlık — arkada ağır, önde yük; forkliftin dengesi bu
+    govde = kutu("govde", (1.7, 1.1, 0.75), konum=(-0.35, 0, 0.62))
+    malzeme(pah(govde, 0.04), "fl-govde", (0.80, 0.58, 0.10), metal=0.3, puruz=0.45)
+    parcalar.append(govde)
+
+    agirlik = kutu("agirlik", (0.5, 1.0, 0.6), konum=(-1.05, 0, 0.5))
+    malzeme(pah(agirlik, 0.04), "fl-agirlik", (0.20, 0.21, 0.26), metal=0.5, puruz=0.6)
+    parcalar.append(agirlik)
+
+    # Sürücü koltuğu ve direksiyon
+    koltuk = kutu("koltuk", (0.45, 0.5, 0.45), konum=(-0.5, 0, 1.22))
+    malzeme(pah(koltuk, 0.03), "fl-koltuk", KOYU, puruz=0.8)
+    parcalar.append(koltuk)
+
+    direksiyon = silindir(
+        "direksiyon", 0.16, 0.04, konum=(-0.05, 0, 1.36), donme=(0, 1.2, 0), kenar=12
+    )
+    malzeme(direksiyon, "fl-koltuk", KOYU, puruz=0.8)
+    parcalar.append(direksiyon)
+
+    # Koruma kafesi — dört dikme ve üstte tavan
+    for x in (-0.95, 0.15):
+        for y in (-0.52, 0.52):
+            dikme = kutu("kafes-dikme", (0.07, 0.07, 1.35), konum=(x, y, 1.72))
+            malzeme(dikme, "fl-kafes", (0.24, 0.25, 0.31), metal=0.5, puruz=0.5)
+            parcalar.append(dikme)
+
+    tavan = kutu("kafes-tavan", (1.25, 1.2, 0.08), konum=(-0.4, 0, 2.42))
+    malzeme(pah(tavan, 0.02), "fl-kafes", (0.24, 0.25, 0.31), metal=0.5, puruz=0.5)
+    parcalar.append(tavan)
+
+    # Direk — iki dikey ray, forkliftin siluetini belirleyen parça
+    for y in (-0.4, 0.4):
+        ray = kutu("direk", (0.12, 0.14, 2.3), konum=(0.62, y, 1.15))
+        malzeme(pah(ray, 0.02), "fl-direk", (0.30, 0.31, 0.38), metal=0.7, puruz=0.35)
+        parcalar.append(ray)
+
+    baglanti = kutu("direk-baglanti", (0.14, 0.95, 0.14), konum=(0.62, 0, 2.2))
+    malzeme(baglanti, "fl-direk", (0.30, 0.31, 0.38), metal=0.7, puruz=0.35)
+    parcalar.append(baglanti)
+
+    # Çatal taşıyıcı ve çatallar
+    tasiyici = kutu("tasiyici", (0.1, 0.95, 0.5), konum=(0.72, 0, 0.42))
+    malzeme(tasiyici, "fl-direk", (0.30, 0.31, 0.38), metal=0.7, puruz=0.35)
+    parcalar.append(tasiyici)
+
+    for y in (-0.3, 0.3):
+        catal = kutu("catal", (1.0, 0.13, 0.07), konum=(1.25, y, 0.2))
+        malzeme(pah(catal, 0.015), "fl-catal", CELIK, metal=0.8, puruz=0.3)
+        parcalar.append(catal)
+
+    # Tekerlekler: önde büyük yük tekerleri, arkada küçük dümen tekerleri
+    for x, yaricap, ayrik in ((0.35, 0.32, 0.58), (-0.95, 0.24, 0.42)):
+        for y in (-ayrik, ayrik):
+            teker = silindir(
+                "teker", yaricap, 0.2, konum=(x, y, yaricap), donme=(math.pi / 2, 0, 0), kenar=14
+            )
+            malzeme(teker, "fl-lastik", LASTIK, puruz=0.9)
+            parcalar.append(teker)
+
+    # Tepe lambası — sahada hareket eden aracı gösteren şey
+    lamba = silindir("lamba", 0.09, 0.12, konum=(-0.4, 0, 2.52), kenar=10)
+    malzeme(lamba, "fl-lamba", (0.85, 0.55, 0.10), puruz=0.4)
+    parcalar.append(lamba)
+
+    birlestir(parcalar, "Forklift")
+    disa_aktar("forklift", klasor)
+
+
 VARLIKLAR = {
     # Faz 1 — mal kabul
     "tir": tir,
@@ -1070,6 +1157,7 @@ VARLIKLAR = {
     "gecis": gecis,
     "guvenlik": guvenlik,
     "bariyer": bariyer,
+    "forklift": forklift,
     "sevkiyat": sevkiyat_binasi,
     "doli": doli,
     # Faz 3 — depo

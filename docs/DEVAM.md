@@ -50,7 +50,7 @@ npx tsc --noEmit && npx eslint . && npx prettier --check . && npm test
 cd web && npx tsc --noEmit && npx eslint . && npm test && npm run build
 ```
 
-Beklenen: motorda **169 test**, web tarafında **59 test**, hepsi geçer.
+Beklenen: motorda **169 test**, web tarafında **63 test**, hepsi geçer.
 
 ---
 
@@ -678,6 +678,39 @@ gönderiyordu.
 
 Doğrulandı (tarayıcıda): 00:16'da tır kapıda ve **bariyer kalkık**; 00:21'de tır
 rampada ve **bariyer inmiş**.
+
+### Tır sahada kalıyor, malı forklift indiriyor
+
+Kullanıcı ekran görüntüsüyle gösterdi: tır mal kabul cephesinin **içine girmiş**
+gibi duruyordu. Sahada da öyle olmaz — dorse sahada durur, malı içeri forklift
+taşır.
+
+**Tır artık köşede park ediyor** (`truckParkWorld`), binadan 11 birim uzakta.
+Bunu yaparken kendi hatama düştüm: `truckRoute()` (zemine çizilen yol) düzeldi
+ama tırın **konumunu** hesaplayan `truckOnRoute` hâlâ rampayı hedefliyordu ve
+ilk yazdığım test yanlış şeyi kontrol ettiği için bunu yakalamadı. Test artık
+`placeTrucks` çıktısını doğruluyor; eski davranış geri konduğunda düşüyor.
+
+**Forklift** yeni bir Blender varlığı: direk, çatallar, koruma kafesi, karşı
+ağırlık, tepe lambası. Kafes olmadan küçük bir traktöre benziyor; sahada ise
+kafes zorunludur. Önceki sürümde palet dorsenin arkasından rampaya doğru kendi
+kendine kayıyordu — kodun yorumu bunu "forklift modellenmiş değil, olmayan bir
+şeyi ima etmemeli" diye açıkça kabul ediyordu.
+
+Neyin motor gerçeği, neyin gösterim olduğu ayrıldı ve `placeForklifts`
+yorumunda yazıyor: **forkliftin var olması, güzergâhı ve iş bitince ortadan
+kalkması** motorun `UNLOADING` durumunun doğrudan karşılığı. **Kaç sefer
+yaptığı** ise motorun modelinde yok (orada boşaltma tek bir süre), o yüzden
+temposu sahnede üretiliyor. Denemesi yapıldı: sefer sayısını yayınlanan
+ilerlemeye bağlamak, boşaltma üç dakika sürdüğü için forklifti her karede tam
+sefer başında yakalıyor ve araç yerinde donuyordu.
+
+Bir düzeltme daha: forklift şeridi başta tırın kendi ekseni üzerindeydi, yani
+araç yükü aldığı an dorsenin içinde kalıyor ve tırın gövdesinden geçip
+çıkıyordu. Şerit tırın yanına alındı (`FORKLIFT_LANE_Z`) ve teste bağlandı.
+
+Doğrulandı (tarayıcıda): tır köşede park hâlinde "Boşaltılıyor"; forklift bir
+karede paletiyle mal kabulde, sonrakinde dönüş yolunda.
 
 ### Sırada ne var
 

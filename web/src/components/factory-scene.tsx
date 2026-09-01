@@ -25,6 +25,7 @@ import {
   aisleZ,
   cameraFarPlane,
   carrierRoute,
+  forkliftRoute,
   maxCameraDistance,
   truckRoute,
   sceneDepth,
@@ -256,9 +257,10 @@ function TugRoutes({ config }: { config: FactoryDescriptor }) {
  * değil, hangi aracın geçtiğini söyleyen şey.
  */
 function TruckRoad({ config }: { config: FactoryDescriptor }) {
-  const [gate, corner, dock] = truckRoute(config);
+  const [gate, corner, park] = truckRoute(config);
   const [yard, exit] = carrierRoute(config);
-  if (!gate || !corner || !dock || !yard || !exit) return null;
+  const [alis, birakis] = forkliftRoute(config);
+  if (!gate || !corner || !park || !alis || !birakis || !yard || !exit) return null;
 
   const genislik = 3.4;
 
@@ -274,10 +276,22 @@ function TruckRoad({ config }: { config: FactoryDescriptor }) {
         <planeGeometry args={[genislik, Math.abs(gate[2] - corner[2]) + genislik]} />
         <meshBasicMaterial color={TONE.logistics.hex} transparent opacity={0.16} />
       </mesh>
-      {/* Yanaşma yolu: köşeden rampaya, X ekseninde. */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[(corner[0] + dock[0]) / 2, 0.012, corner[2]]}>
-        <planeGeometry args={[Math.abs(dock[0] - corner[0]) + genislik, genislik]} />
+      {/* Yanaşma yolu: köşeden park yerine, X ekseninde. */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[(corner[0] + park[0]) / 2, 0.012, corner[2]]}>
+        <planeGeometry args={[Math.abs(park[0] - corner[0]) + genislik, genislik]} />
         <meshBasicMaterial color={TONE.logistics.hex} transparent opacity={0.16} />
+      </mesh>
+      {/*
+        Forklift şeridi: tırın park yerinden mal kabule. Tır yolundan dar,
+        çünkü buradan geçen araç da dar — genişlik hangi aracın geçtiğini
+        söyleyen şey.
+      */}
+      <mesh
+        rotation={[-Math.PI / 2, 0, 0]}
+        position={[(alis[0] + birakis[0]) / 2, 0.012, alis[2]]}
+      >
+        <planeGeometry args={[Math.abs(birakis[0] - alis[0]), genislik * 0.55]} />
+        <meshBasicMaterial color={TONE.logistics.hex} transparent opacity={0.12} />
       </mesh>
     </group>
   );

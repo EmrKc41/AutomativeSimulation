@@ -21,6 +21,10 @@ import {
   carrierRoute,
   entryGateOpenness,
   exitGateOpenness,
+  forkliftAt,
+  forkliftRoute,
+  placeForklifts,
+  truckParkWorld,
   exitGatePlacement,
   securityGatePlacement,
   truckRoute,
@@ -911,6 +915,172 @@ describe("yerleşim revizyonu: bağımsız alanlar, düz tırlar, tanımlı güz
       expect(aci).toBeLessThanOrEqual(onceki + 1e-9);
       onceki = aci;
     }
+  });
+
+  /**
+   * Tır binaya girmemeli.
+   *
+   * Önceki sürümde rampaya kadar sürüyordu ve mal kabul cephesinin içine
+   * girmiş gibi duruyordu. Sahada da öyle olmaz: dorse sahada durur, malı
+   * içeri forklift taşır.
+   */
+  test("the truck parks in the yard, clear of the receiving building", () => {
+    const park = truckParkWorld(config);
+    const [, dock] = forkliftRoute(config);
+    const bina = toWorld(...planPosition(config, "RECEIVING-DOCK"));
+
+    // Park yeri binanın solunda ve ondan uzakta.
+    expect(park[0]).toBeLessThan(bina[0]);
+    expect(bina[0] - park[0]).toBeGreaterThan(8);
+
+    // Tırın yolu park yerinde bitiyor, rampada değil.
+    const yol = truckRoute(config);
+    expect(yol.at(-1)).toEqual(park);
+    expect(yol.at(-1)).not.toEqual(dock);
+
+    // Ve asıl önemlisi: **yerleştirilen** tır da orada duruyor. Bu iki şey
+    // ayrı hesaplanıyor; zemin çizgisini taşıyıp aracı olduğu yerde bırakmak
+    // tam olarak buradaki hataydı.
+    const duran = placeTrucks(
+      config,
+      frame({
+        trucks: [
+          {
+            id: "TIR-1",
+            materialId: "M",
+            batchId: "B",
+            quantity: 1,
+            status: "DOCKED",
+            dispatchedAt: 0,
+            dueAt: 8,
+            ticksRemaining: 1,
+            legTicks: 1,
+            progress: 1,
+            dockId: "RECEIVING-DOCK",
+            accepted: null,
+            completedAt: null,
+          },
+        ],
+      }),
+    )[0]!;
+
+    expect(duran.position[0]).toBeCloseTo(park[0], 6);
+    expect(duran.position[2]).toBeCloseTo(park[2], 6);
+    expect(bina[0] - duran.position[0]).toBeGreaterThan(8);
+  });
+
+  /**
+   * Forklift, tırın park yeri ile mal kabul arasında gidip geliyor.
+   *
+   * Sefer sayısı uydurulmuyor: motorda boşaltma üç dakika sürüyor, forklift
+   * de üç sefer yapıyor. Dolu gidiyor, boş dönüyor — hangi yönün iş, hangisinin
+   * dönüş olduğunu söyleyen tek şey bu.
+   */
+  test("a forklift shuttles between the parked truck and receiving", () => {
+    const bosaltan = (progress: number) =>
+      placeForklifts(
+        config,
+        frame({
+          trucks: [
+            {
+              id: "TIR-1",
+              materialId: "M",
+              batchId: "B",
+              quantity: 1,
+              status: "UNLOADING",
+              dispatchedAt: 0,
+              dueAt: 8,
+              ticksRemaining: 2,
+              legTicks: 3,
+              progress,
+              dockId: "RECEIVING-DOCK",
+              accepted: null,
+              completedAt: null,
+            },
+          ],
+        }),
+      );
+
+    const [park, dock] = forkliftRoute(config);
+    const gorev = bosaltan(0.5)[0]!;
+
+    // Güzergâh: tırın park yerinden mal kabule.
+    expect(gorev.from).toEqual(park);
+    expect(gorev.to).toEqual(dock);
+
+    // Seferin başında tırın yanında ve yüklü.
+    const baslangic = forkliftAt(gorev, 0);
+    expect(baslangic.position[0]).toBeCloseTo(park![0], 6);
+    expect(baslangic.laden).toBe(true);
+
+    // Yarısında mal kabule varmış, hâlâ yüklü.
+    const varis = forkliftAt(gorev, 0.5 - 1e-9);
+    expect(varis.position[0]).toBeCloseTo(dock![0], 5);
+    expect(varis.laden).toBe(true);
+
+    // Dönüşte boş ve arkası dönük.
+    const donus = forkliftAt(gorev, 0.75);
+    expect(donus.laden).toBe(false);
+    expect(donus.heading).toBeCloseTo(Math.PI, 6);
+    expect(donus.position[0]).toBeCloseTo((park![0] + dock![0]) / 2, 6);
+
+    // Hiçbir noktada güzergâhın dışına çıkmıyor — kaç tur dönerse dönsün.
+    for (let i = 0; i <= 60; i += 1) {
+      const yerde = forkliftAt(gorev, i / 20);
+      expect(yerde.position[0]).toBeGreaterThanOrEqual(Math.min(park![0], dock![0]) - 1e-6);
+      expect(yerde.position[0]).toBeLessThanOrEqual(Math.max(park![0], dock![0]) + 1e-6);
+    }
+  });
+
+  /**
+   * Forklift şeridi tırın gövdesinin içinden geçmemeli.
+   *
+   * İlk sürümde şerit tırın kendi ekseni üzerindeydi: forklift yükü aldığı an
+   * dorsenin içinde kalıyor, sonra tırın gövdesinin içinden geçip çıkıyordu.
+   * Gerçekte forklift dorseye yandan yanaşır.
+   */
+  test("the forklift lane runs beside the parked truck, not through it", () => {
+    const park = truckParkWorld(config);
+    const [alis, birakis] = forkliftRoute(config);
+
+    // Şerit tırın ekseninden ayrı.
+    expect(Math.abs(alis![2] - park[2])).toBeGreaterThan(2);
+    // İki uç aynı şeritte: forklift çapraz süzülmüyor.
+    expect(alis![2]).toBeCloseTo(birakis![2], 6);
+    // Ve gerçekten bir mesafe kat ediyor.
+    expect(Math.abs(birakis![0] - alis![0])).toBeGreaterThan(8);
+  });
+
+  test("there is no forklift unless a truck is actually being unloaded", () => {
+    const durum = (status: InboundTruck["status"]) =>
+      placeForklifts(
+        config,
+        frame({
+          trucks: [
+            {
+              id: "TIR-1",
+              materialId: "M",
+              batchId: "B",
+              quantity: 1,
+              status,
+              dispatchedAt: 0,
+              dueAt: 8,
+              ticksRemaining: 2,
+              legTicks: 3,
+              progress: 0.5,
+              dockId: "RECEIVING-DOCK",
+              accepted: null,
+              completedAt: null,
+            },
+          ],
+        }),
+      );
+
+    // İş bitince forklift orada beklemez.
+    expect(durum("ARRIVING")).toHaveLength(0);
+    expect(durum("DOCKED")).toHaveLength(0);
+    expect(durum("COMPLETED")).toHaveLength(0);
+    expect(durum("UNLOADING")).toHaveLength(1);
   });
 
   /**
