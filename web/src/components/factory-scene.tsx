@@ -70,7 +70,11 @@ export function FactoryScene(props: FactorySceneProps) {
       // would double the cost for a difference nobody would name.
       shadows
       dpr={[1, 1.75]}
-      camera={{ position: [0, 24, 30], fov: SCENE_FOV_DEG, near: 0.1, far: cameraFarPlane(props.config) }}
+      camera={{ position: [0, 24, 30], fov: SCENE_FOV_DEG, // Yakın düzlem 0,1 değil 0,5: kamera zaten 3 birimden yakına gelemiyor
+      // (`minDistance`) ve 0,1 ile uzak düzlem arasındaki oran derinlik
+      // tamponunun hassasiyetini boşa harcıyordu. Zemine yapışık düzlemlerin
+      // bantlanmasında payı olan ikinci sebep buydu.
+      near: 0.5, far: cameraFarPlane(props.config) }}
       // A dark hall: the scene must sit on the same ground as the rest of the UI.
       onCreated={({ gl }) => gl.setClearColor("#14121f")}
     >
@@ -158,17 +162,63 @@ function Ground() {
       <Grid
         position={[0, 0, 0]}
         args={[160, 90]}
-        cellSize={SCALE * 5}
+        // Izgara aralığı tesisin boyuna göre. 5 metrelik hücreler tek hatlı,
+        // kısa bir tesiste okunaklıydı; üç hatlı 300 metrelik sahada kamera
+        // geriye çekilince aynı çizgiler ekranda birkaç piksele düşüyor ve
+        // moiré deseni üretiyor. Zemin ölçek versin diye var, doku olsun diye
+        // değil.
+        cellSize={SCALE * 20}
         cellColor="#1e293b"
-        sectionSize={SCALE * 20}
+        sectionSize={SCALE * 100}
         sectionColor="#28324a"
-        fadeDistance={90}
-        fadeStrength={1.5}
+        fadeDistance={220}
+        fadeStrength={1}
         infiniteGrid={false}
       />
     </>
   );
 }
+
+/**
+ * Zemine serilen saydam kaplamaların malzemesi.
+ *
+ * `depthWrite` **kapalı**. Bölgeler, tır yolları, doli koridorları ve forklift
+ * şeridi hepsi zemine yapışık düzlemler ve köşelerde birbirinin üstünden
+ * geçiyorlar. Aynı yükseklikte iki düzlem derinlik tamponunda yarışınca
+ * ekranda düzenli koyu-açık bantlar çıkıyor — kullanıcının gördüğü "çizgili
+ * çizgili" görüntü buydu; kare hızıyla ilgisi yok, her karede aynı yerde
+ * duruyor.
+ *
+ * Derinliğe yazmayan bir kaplama kendisiyle yarışmaz; hangisinin üstte
+ * çizileceğini `renderOrder` söylüyor.
+ */
+function ZeminKaplamasi({
+  renk,
+  opaklik,
+  sira,
+}: {
+  renk: string;
+  opaklik: number;
+  sira: number;
+}) {
+  return (
+    <meshBasicMaterial
+      color={renk}
+      transparent
+      opacity={opaklik}
+      depthWrite={false}
+      polygonOffset
+      polygonOffsetFactor={-sira}
+      polygonOffsetUnits={-sira}
+    />
+  );
+}
+
+/** Kaplama katmanları; büyük olan üstte çizilir. */
+const KAT_BOLGE = 1;
+const KAT_TIR_YOLU = 2;
+const KAT_FORKLIFT = 3;
+const KAT_DOLI = 4;
 
 function Zones({ config, showLabels }: { config: FactoryDescriptor; showLabels: boolean }) {
   return (
@@ -180,9 +230,9 @@ function Zones({ config, showLabels }: { config: FactoryDescriptor; showLabels: 
         const depth = (y1 - y0) * SCALE;
         return (
           <group key={zone.id}>
-            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[wx, 0.005, wz]}>
+            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[wx, 0.01, wz]}>
               <planeGeometry args={[width, depth]} />
-              <meshBasicMaterial color={TONE[zone.tone].hex} transparent opacity={0.06} />
+              <ZeminKaplamasi renk={TONE[zone.tone].hex} opaklik={0.06} sira={KAT_BOLGE} />
             </mesh>
             {showLabels ? (
               <Html
@@ -228,10 +278,10 @@ function TugRoutes({ config }: { config: FactoryDescriptor }) {
       {/* Depodan en uzak koridora kadar uzanan dikey bağlantı. */}
       <mesh
         rotation={[-Math.PI / 2, 0, 0]}
-        position={[storeX, 0.014, (storeZ + enUzak) / 2]}
+        position={[storeX, 0.01, (storeZ + enUzak) / 2]}
       >
         <planeGeometry args={[0.5, Math.abs(enUzak - storeZ)]} />
-        <meshBasicMaterial color={TONE.logistics.hex} transparent opacity={0.26} />
+        <ZeminKaplamasi renk={TONE.logistics.hex} opaklik={0.26} sira={KAT_DOLI} />
       </mesh>
       {config.lines.map((line) => (
         <TugRoute key={line.id} config={config} lineId={line.id} />
@@ -258,14 +308,14 @@ function TugRoute({ config, lineId }: { config: FactoryDescriptor; lineId: strin
 
   return (
     <group>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[(storeX + lastX) / 2, 0.015, koridorZ]}>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[(storeX + lastX) / 2, 0.01, koridorZ]}>
         <planeGeometry args={[lastX - storeX + 4, 0.5]} />
-        <meshBasicMaterial color={TONE.logistics.hex} transparent opacity={0.28} />
+        <ZeminKaplamasi renk={TONE.logistics.hex} opaklik={0.28} sira={KAT_DOLI} />
       </mesh>
       {targets.map(([x, , z], index) => (
-        <mesh key={index} rotation={[-Math.PI / 2, 0, 0]} position={[x, 0.015, (koridorZ + z) / 2]}>
+        <mesh key={index} rotation={[-Math.PI / 2, 0, 0]} position={[x, 0.01, (koridorZ + z) / 2]}>
           <planeGeometry args={[0.5, Math.abs(koridorZ - z)]} />
-          <meshBasicMaterial color={TONE.logistics.hex} transparent opacity={0.22} />
+          <ZeminKaplamasi renk={TONE.logistics.hex} opaklik={0.22} sira={KAT_DOLI} />
         </mesh>
       ))}
     </group>
@@ -309,10 +359,10 @@ function Yol({
           <mesh
             key={index}
             rotation={[-Math.PI / 2, 0, 0]}
-            position={[(bas[0] + son[0]) / 2, 0.012, (bas[2] + son[2]) / 2]}
+            position={[(bas[0] + son[0]) / 2, 0.01, (bas[2] + son[2]) / 2]}
           >
             <planeGeometry args={[dx + genislik, dz + genislik]} />
-            <meshBasicMaterial color={TONE.logistics.hex} transparent opacity={opaklik} />
+            <ZeminKaplamasi renk={TONE.logistics.hex} opaklik={opaklik} sira={KAT_TIR_YOLU} />
           </mesh>
         );
       })}
@@ -338,14 +388,14 @@ function TruckRoad({ config }: { config: FactoryDescriptor }) {
         <Yol key={index} nokta={yol} genislik={genislik} />
       ))}
       {/* Giriş yolu: kapıdan köşeye, Z ekseninde. */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[gate[0], 0.012, (gate[2] + corner[2]) / 2]}>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[gate[0], 0.01, (gate[2] + corner[2]) / 2]}>
         <planeGeometry args={[genislik, Math.abs(gate[2] - corner[2]) + genislik]} />
-        <meshBasicMaterial color={TONE.logistics.hex} transparent opacity={0.16} />
+        <ZeminKaplamasi renk={TONE.logistics.hex} opaklik={0.16} sira={KAT_TIR_YOLU} />
       </mesh>
       {/* Yanaşma yolu: köşeden park yerine, X ekseninde. */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[(corner[0] + park[0]) / 2, 0.012, corner[2]]}>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[(corner[0] + park[0]) / 2, 0.01, corner[2]]}>
         <planeGeometry args={[Math.abs(park[0] - corner[0]) + genislik, genislik]} />
-        <meshBasicMaterial color={TONE.logistics.hex} transparent opacity={0.16} />
+        <ZeminKaplamasi renk={TONE.logistics.hex} opaklik={0.16} sira={KAT_TIR_YOLU} />
       </mesh>
       {/*
         Forklift şeridi: tırın park yerinden mal kabule. Tır yolundan dar,
@@ -354,10 +404,10 @@ function TruckRoad({ config }: { config: FactoryDescriptor }) {
       */}
       <mesh
         rotation={[-Math.PI / 2, 0, 0]}
-        position={[(alis[0] + birakis[0]) / 2, 0.012, alis[2]]}
+        position={[(alis[0] + birakis[0]) / 2, 0.01, alis[2]]}
       >
         <planeGeometry args={[Math.abs(birakis[0] - alis[0]), genislik * 0.55]} />
-        <meshBasicMaterial color={TONE.logistics.hex} transparent opacity={0.12} />
+        <ZeminKaplamasi renk={TONE.logistics.hex} opaklik={0.12} sira={KAT_FORKLIFT} />
       </mesh>
     </group>
   );

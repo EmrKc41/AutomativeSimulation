@@ -50,7 +50,7 @@ npx tsc --noEmit && npx eslint . && npx prettier --check . && npm test
 cd web && npx tsc --noEmit && npx eslint . && npm test && npm run build
 ```
 
-Beklenen: motorda **169 test**, web tarafında **65 test**, hepsi geçer.
+Beklenen: motorda **169 test**, web tarafında **67 test**, hepsi geçer.
 
 Tesiste artık **üç üretim hattı** var (LINE-01 Meltem, LINE-02 Poyraz,
 LINE-03 Lodos); 18 istasyon, 9 doli.
@@ -822,6 +822,33 @@ arasında akıyor, prese girip presten çıkıyor.
 hesaplıyordu; bu **+Z'ye bakan** bir model için doğru. Oysa tır, oto taşıyıcı,
 doli ve forkliftin hepsi +X'e bakıyor. Yani doli arabaları baştan beri
 gittikleri yöne dik duruyordu — tırda düzeltilen hatanın fark edilmemiş hâli.
+
+### Bitmiş ürün hat başına; zemindeki bantlanma
+
+**Her hattın kendi bitmiş ürün alanı var.** Tek bir mamul depo vardı ve o da
+birinci hattın hizasındaydı: ikinci ve üçüncü hattın araçları kalite kapısından
+çıkar çıkmaz tesisin öbür ucuna ışınlanıyordu. Alanlar sevkiyat şeritleriyle
+aynı mantıkta — hattın kendi hizasında, çünkü araç oradan doğruca kendi
+şeridine geçiyor. Park sayacı da hat başına: tek sayaçla ikinci hattın araçları
+birincinin arkasına diziliyor, kendi alanları boş kalıyordu.
+
+**Zemindeki "çizgili çizgili" görüntü kare hızı değildi.** Bölgeler, tır
+yolları, doli koridorları ve forklift şeridi — hepsi zemine yapışık saydam
+düzlemler ve köşelerde birbirinin üstünden geçiyorlar. Aynı yükseklikteki iki
+düzlem derinlik tamponunda yarışınca ekranda düzenli koyu-açık bantlar çıkıyor;
+desen her karede aynı yerde durduğu için kare hızıyla ilgisi yok.
+
+Üç şey birden yapıldı:
+
+1. Bütün zemin kaplamaları ortak bir malzemeden geçiyor: `depthWrite` kapalı,
+   sıralama `polygonOffset` ile. Derinliğe yazmayan bir kaplama kendisiyle
+   yarışmaz.
+2. Kameranın yakın düzlemi 0,1'den 0,5'e çıktı. Kamera zaten 3 birimden yakına
+   gelemiyor; 0,1 ile uzak düzlem arasındaki oran derinlik hassasiyetini boşa
+   harcıyordu.
+3. Izgara aralığı tesisin boyuna göre seyreltildi (5 m → 20 m hücre). 5
+   metrelik hücreler kısa bir tesiste okunaklıydı; 300 metrelik sahada kamera
+   geriye çekilince çizgiler ekranda birkaç piksele düşüp moiré üretiyordu.
 
 ### Sırada ne var
 

@@ -58,12 +58,30 @@ export function bufferSlot(config: FactoryDescriptor, stationId: string, index: 
 }
 
 /** Finished vehicles park in rows in the finished-goods yard. */
-export function finishedSlot(config: FactoryDescriptor, index: number): World {
-  const [planX, planY] = planPosition(config, "FINISHED-GOODS");
-  const [x, , z] = toWorld(planX, planY);
+/**
+ * Bir hattın bitmiş ürün alanı.
+ *
+ * Tek bir mamul depo vardı ve o da birinci hattın hizasındaydı: ikinci ve
+ * üçüncü hattın araçları, kapıdan çıkar çıkmaz tesisin öbür ucuna ışınlanıyordu.
+ * Her hattın kendi alanı, kendi hizasında — sevkiyat şeritleriyle aynı mantık,
+ * çünkü araç oradan doğruca kendi şeridine geçiyor.
+ */
+export function finishedGoodsOf(config: FactoryDescriptor, lineId: string): World {
+  const [planX] = planPosition(config, "FINISHED-GOODS");
+  return toWorld(planX, linePlanY(config, lineId));
+}
+
+export function finishedSlot(
+  config: FactoryDescriptor,
+  lineId: string,
+  index: number,
+): World {
+  const [x, , z] = finishedGoodsOf(config, lineId);
+  // Araçlar sıra sıra park ediyor. Aralık gerçek araç boyundan geniş: 4,3 m
+  // uzunluk, 1,9 m genişlik.
   const row = Math.floor(index / 4);
   const column = index % 4;
-  return [x + row * 1.3, 0.55, z - 1.8 + column * 1.2];
+  return [x + row * 6 * SCALE, 0.55, z - 4.5 * SCALE + column * 3 * SCALE];
 }
 
 /** Loaded vehicles sit on their carrier in the shipping yard. */
@@ -221,7 +239,6 @@ const ORTAK_BOLGELER: readonly Zone[] = [
   { id: "gate", label: "Üretime Geçiş", rect: [5, -6, 12, 7], tone: "ok" },
   { id: "quarantine", label: "Karantina", rect: [-8, 14, 4, 27], tone: "risk" },
   { id: "store", label: "İç Lojistik Deposu", rect: [14, -7, 28, 8], tone: "logistics" },
-  { id: "finished", label: "Bitmiş Ürün", rect: [132, -8, 150, 10], tone: "ok" },
   // Sevkiyat da bağımsız, mal kabulle aynı mantık.
   { id: "shipping", label: "Sevkiyat", rect: [162, -12, 186, 12], tone: "logistics" },
 ];
@@ -253,6 +270,12 @@ export function zonesOf(config: FactoryDescriptor): Zone[] {
         // farklı.
         label: `${line.id} · ${line.model}`,
         rect: [Math.min(...xs) - 8, planY - 6, Math.max(...xs) + 10, planY + 8],
+        tone: "ok",
+      },
+      {
+        id: `finished:${line.id}`,
+        label: "Bitmiş Ürün",
+        rect: [132, planY - 8, 150, planY + 10],
         tone: "ok",
       },
       {
@@ -572,12 +595,16 @@ export function placeUnits(config: FactoryDescriptor, frame: FactoryFrame): Plac
   }
 
   // Units that passed the gate but have not been assigned to a carrier yet.
-  let finished = 0;
+  // Sayaç **hat başına**: tek sayaçla ikinci hattın araçları birincinin
+  // arkasına diziliyor, yani kendi alanları boş kalırdı.
+  const bitenSayisi = new Map<string, number>();
   for (const product of frame.activeProducts) {
     if (seen.has(product.id)) continue;
     if (product.status !== "READY_TO_SHIP") continue;
-    push(product.id, finishedSlot(config, finished), false);
-    finished += 1;
+    const hat = product.lineId;
+    const sira = bitenSayisi.get(hat) ?? 0;
+    push(product.id, finishedSlot(config, hat, sira), false);
+    bitenSayisi.set(hat, sira + 1);
   }
 
   // Units on a carrier in the yard, one lane per shipment being handled.

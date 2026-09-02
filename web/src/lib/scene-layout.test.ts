@@ -20,6 +20,8 @@ import {
   agvWorld,
   aisleZ,
   carrierRouteOf,
+  finishedGoodsOf,
+  linePlanY,
   carrierRoutes,
   shippingLaneZ,
   entryGateOpenness,
@@ -1192,6 +1194,65 @@ describe("yerleşim revizyonu: bağımsız alanlar, düz tırlar, tanımlı güz
    * Tek şerit varken üç hattın taşıyıcısı aynı noktaya yerleşiyordu — yani üst
    * üste biniyorlardı.
    */
+  /**
+   * Her hattın kendi bitmiş ürün alanı olmalı.
+   *
+   * Tek bir mamul depo vardı ve o da birinci hattın hizasındaydı: ikinci ve
+   * üçüncü hattın araçları kalite kapısından çıkar çıkmaz tesisin öbür ucuna
+   * ışınlanıyordu.
+   */
+  test("every line has its own finished-goods area, on its own row", () => {
+    const alanlar = config.lines.map((line) => finishedGoodsOf(config, line.id));
+
+    // Üç ayrı alan, üçü de kendi hattının hizasında.
+    expect(new Set(alanlar.map((alan) => alan[2])).size).toBe(config.lines.length);
+    for (const [index, line] of config.lines.entries()) {
+      expect(alanlar[index]![2]).toBeCloseTo(toWorld(0, linePlanY(config, line.id))[2], 6);
+    }
+
+    // Hepsi hattın bittiği yerin doğusunda, sevkiyattan önce.
+    const sonIstasyon = stationWorld(config, config.lines[0]!.route.at(-1)!)[0];
+    const saha = toWorld(...planPosition(config, "SHIPPING-YARD"))[0];
+    for (const alan of alanlar) {
+      expect(alan[0]).toBeGreaterThan(sonIstasyon);
+      expect(alan[0]).toBeLessThan(saha);
+    }
+  });
+
+  test("a finished vehicle waits in its own line's area", () => {
+    const yerlesim = placeUnits(
+      config,
+      frame({
+        machines: [],
+        activeProducts: [
+          { ...product("CAR-1", "READY_TO_SHIP"), lineId: "LINE-01" },
+          { ...product("CAR-2", "READY_TO_SHIP"), lineId: "LINE-03" },
+        ],
+      }),
+    );
+
+    const birinci = yerlesim.find((unit) => unit.id === "CAR-1")!;
+    const ucuncu = yerlesim.find((unit) => unit.id === "CAR-2")!;
+
+    // Araç alanın **içinde**: park sırasının ilk gözünde durduğu için tam
+    // merkezde değil, ama kendi hattının alanından çıkmıyor. Hatlar 16 dünya
+    // birimi arayken bu kontrol, aracın komşu hatta düşmesini yakalar.
+    const alanYariDerinlik = 9 * SCALE;
+    expect(
+      Math.abs(birinci.position[2] - finishedGoodsOf(config, "LINE-01")[2]),
+    ).toBeLessThan(alanYariDerinlik);
+    expect(
+      Math.abs(ucuncu.position[2] - finishedGoodsOf(config, "LINE-03")[2]),
+    ).toBeLessThan(alanYariDerinlik);
+    // Ve birbirlerinin alanına girmiyorlar.
+    expect(Math.abs(birinci.position[2] - ucuncu.position[2])).toBeGreaterThan(
+      alanYariDerinlik * 2,
+    );
+    // Ve sayaç hat başına: üçüncü hattın ilk aracı birincinin arkasına
+    // dizilmiyor, kendi alanının başında duruyor.
+    expect(birinci.position[0]).toBeCloseTo(ucuncu.position[0], 6);
+  });
+
   test("each line loads in its own lane", () => {
     const seritler = config.lines.map((line) => shippingLaneZ(config, line.id));
     expect(new Set(seritler).size).toBe(config.lines.length);
