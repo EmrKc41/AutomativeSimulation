@@ -1,5 +1,5 @@
 import type { Command, Machine, ProductUnit } from "./domain.ts";
-import { stationById } from "./factory.ts";
+import { lineById, routeStationIds, stationById } from "./factory.ts";
 import { ALERT_TEXT, defectText, eventText, severityText } from "./labels.ts";
 import { windowedUtilization } from "./metrics.ts";
 import type { SimulationState } from "./state.ts";
@@ -62,7 +62,7 @@ function minutes(ticks: number): string {
 }
 
 function routeMachines(state: SimulationState): Machine[] {
-  const ids = new Set(state.config.route);
+  const ids = routeStationIds(state.config);
   return state.machines.filter((machine) => ids.has(machine.id));
 }
 
@@ -191,12 +191,18 @@ export function explainBottleneck(state: SimulationState): Analysis {
   // stations starve because nothing reaches them. Upstream, they are either
   // blocked by a full buffer or throttled by the WIP cap — never starved by the
   // constraint itself.
-  const constraintIndex = state.config.route.indexOf(constraint.id);
+  // "Yukarı" ve "aşağı" yalnızca kısıtın **kendi hattı** içinde anlamlı. Tesis
+  // genelinde arandığında başka hattın makineleri rotada bulunamıyor ve
+  // `indexOf` −1 döndürüyor: hepsi "yukarıda" sayılır, bulgu da o hatta hiç
+  // olmayan bir sorunu anlatırdı.
+  const line = lineById(state.config, constraint.lineId);
+  const hatMakineleri = machines.filter((machine) => machine.lineId === line.id);
+  const constraintIndex = line.route.indexOf(constraint.id);
   const threshold = elapsed(state) * 0.25;
 
-  const downstreamStarved = machines.filter(
+  const downstreamStarved = hatMakineleri.filter(
     (machine) =>
-      state.config.route.indexOf(machine.id) > constraintIndex && machine.starvedTicks > threshold,
+      line.route.indexOf(machine.id) > constraintIndex && machine.starvedTicks > threshold,
   );
   if (downstreamStarved.length > 0) {
     findings.push({
@@ -207,9 +213,9 @@ export function explainBottleneck(state: SimulationState): Analysis {
     });
   }
 
-  const upstreamHeld = machines.filter(
+  const upstreamHeld = hatMakineleri.filter(
     (machine) =>
-      state.config.route.indexOf(machine.id) < constraintIndex &&
+      line.route.indexOf(machine.id) < constraintIndex &&
       machine.blockedTicks + machine.starvedTicks > threshold,
   );
   if (upstreamHeld.length > 0) {
@@ -224,7 +230,7 @@ export function explainBottleneck(state: SimulationState): Analysis {
         .join(", ")}. ${
         blocked.length > 0
           ? "Tıkalı süre, aşağıdaki tamponun dolduğu anlamına gelir — bu istasyonları daha hızlı çalıştırmak sadece kuyruğu büyütür."
-          : `${state.config.wipCap} araçlık hat tavanı tarafından kasıtlı olarak frenleniyorlar; stok bilerek hatta sokulmuyor.`
+          : `${line.wipCap} araçlık hat tavanı tarafından kasıtlı olarak frenleniyorlar; stok bilerek hatta sokulmuyor.`
       }`,
       severity: "info",
       evidence: upstreamHeld.map(machineEvidence),

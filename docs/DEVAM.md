@@ -52,6 +52,9 @@ cd web && npx tsc --noEmit && npx eslint . && npm test && npm run build
 
 Beklenen: motorda **169 test**, web tarafında **63 test**, hepsi geçer.
 
+Tesiste artık **üç üretim hattı** var (LINE-01 Meltem, LINE-02 Poyraz,
+LINE-03 Lodos); 18 istasyon, 9 doli.
+
 ---
 
 ## 2. Nerede ne var
@@ -711,6 +714,62 @@ araç yükü aldığı an dorsenin içinde kalıyor ve tırın gövdesinden geç
 
 Doğrulandı (tarayıcıda): tır köşede park hâlinde "Boşaltılıyor"; forklift bir
 karede paletiyle mal kabulde, sonrakinde dönüş yolunda.
+
+### Üç üretim hattı
+
+Kullanıcı "hattan iki tane daha, her birinde farklı model, aynı mantık
+tamamen" dedi. Motorun tek hat varsayımı `config.route` /
+`config.reworkStationId` / `config.wipCap` üzerinden yirmi küsur yere
+işlemişti; hepsi `LineConfig`'e taşındı. İş emri bir hatta ait, ürün hattını
+iş emrinden alıyor, rota ve tamir hücresi ürünün kendi hattından okunuyor.
+
+**Hat 1'in istasyon kimlikleri korundu** (`PRESS-01`, `WELD-04`, …): bunlar
+kayıtlı veri kümelerinde, senaryolarda ve testlerde geçiyor ve yeniden
+numaralandırmak, işe yaramayan bir değişiklik için doksan küsur yeri elden
+geçirmek olurdu.
+
+**Ölçülen ve düzeltilen şey:** üretimi üçe katlayıp beslemeyi olduğu yerde
+bırakmak, iki hat değil iki _aç_ hat eklemek olurdu. İlk koşuda hatlar
+20/41/17 araç açabildi — hepsi kendi tavanında sıkışmış. Malzeme tedariği hat
+sayısıyla ölçeklendi; sonrasında üç tohumun üçünde de üç hat 60'ar araç
+bitiriyor.
+
+**Denenip reddedilen:** doli sayısını 9'dan 18'e çıkarmak hat kenarı
+beklemesini hiç değiştirmedi (199'da sabit), çünkü arabalar zaten %28
+meşguliyetle boştaydı. Kısıt taşıma kapasitesi değil, kanban sipariş
+noktasıydı: 2'den 3'e çıkarınca bekleme 199'dan 45'e indi. Sipariş
+_miktarını_ büyütmek işi kötüleştiriyor (3/8 → 90 bekleme), çünkü büyük parti
+depoyu tek seferde boşaltıyor.
+
+**Bir kayıt eskidi ve bunu test yakaladı.** `optimizer.test.ts` içindeki
+"en yakın araç kuralı reddedildi" koruması, tam olarak bu iş için vardı: üç
+hatlı tesiste kural artık **yolu azaltıyor** (−1159 dk yol, −835 dk boş yol).
+Ret duruyor, çünkü gecikme 1640 dk ve en kötü iş emri 526 dk artıyor — ama
+gerekçe artık üç maddeli değil **iki maddeli**. Hem test hem
+`IMPLEMENTATION_PLAN.md` buna göre güncellendi; test her iki yönü de tutuyor.
+
+Ayrıca üç test, tesis genelinde doğru ama hat başına yanlış olduğu için
+düzeltildi: WIP tavanı (hat başına sayılmalı), son kalite kapısı (aracın kendi
+hattının son istasyonu) ve andon (senaryonun durdurduğu istasyona bakmalı —
+18 makineyle 40. dakikadan önce rastgele bir arıza olağan).
+
+`analytics.ts` içinde sessiz bir tuzak vardı: yukarı/aşağı akış
+`route.indexOf` ile bulunuyordu ve başka hattın makinesi için −1 döner, yani
+**hepsi "yukarıda" sayılırdı**. Karşılaştırma kısıtın kendi hattıyla
+sınırlandı.
+
+### İç içe geçen nesneler — kısmen
+
+Konveyör **her istasyonun gövdesinin içinden** geçiyordu; presin ortasından
+bant görünüyordu. Bant artık istasyonların arasında akıyor, içinden değil:
+prese giriyor, presten çıkıyor.
+
+**Açık kalan:** kalite kapısı hâlâ bandın üstüne basıyor, operatörler
+makinelere fazla yakın duruyor ve büyük binalar kenarlardan taşıyor. Bunların
+ortak sebebi bölüm 6'daki **ölçek uyuşmazlığı**: modeller konumlara göre üç
+kat büyük çiziliyor, o yüzden 7 birimlik istasyon aralığına 4,2 birimlik
+makine sığmıyor. Tek tek model kaydırmak semptomu örter; asıl karar hâlâ
+verilmedi.
 
 ### Sırada ne var
 

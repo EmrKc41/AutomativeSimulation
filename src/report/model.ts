@@ -8,7 +8,7 @@ import type {
   ScenarioKind,
   ShipmentStatus,
 } from "../domain.ts";
-import { materialName, stationById } from "../factory.ts";
+import { materialName, stationById, totalDemandPerShift } from "../factory.ts";
 import {
   ALERT_TEXT,
   MACHINE_STATUS_TEXT,
@@ -226,7 +226,7 @@ export interface ReportOptions {
 export function buildReportModel(state: SimulationState, options: ReportOptions = {}): ReportModel {
   const generatedAt = options.generatedAt ?? new Date();
   const elapsed = Math.max(1, state.time);
-  const takt = state.config.shiftTicks / state.config.demandPerShift;
+  const takt = state.config.shiftTicks / totalDemandPerShift(state.config);
 
   const stations: StationRow[] = state.machines.map((machine) => {
     const station = stationById(state.config, machine.id);
@@ -402,7 +402,9 @@ export function buildReportModel(state: SimulationState, options: ReportOptions 
     scenarioLabel: state.scenario.label,
     scenarioDescription: state.scenario.description,
     seed: state.seed,
-    lineId: state.config.lineId,
+    // Rapor artık tesisin tamamını anlatıyor; başlık da hatların hepsini
+    // saymalı, birini seçmemeli.
+    lineId: state.config.lines.map((line) => line.id).join(" + "),
     simulatedMinutes: elapsed,
     shiftMinutes: state.config.shiftTicks,
     metrics: state.metrics,

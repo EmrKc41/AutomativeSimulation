@@ -1,4 +1,4 @@
-import type { FactoryConfig, StationConfig } from "./domain.ts";
+import type { FactoryConfig, LineConfig, StationConfig } from "./domain.ts";
 
 /**
  * Seed master data for the reference line.
@@ -59,7 +59,24 @@ const noInspection = {
   cameraId: null,
 } as const;
 
-const stations: readonly StationConfig[] = [
+/**
+ * Hat kenarı kanban sipariş noktası.
+ *
+ * Tek hatlı tesiste 2 yeterliydi. Üç hat aynı depodan beslenince yetmedi:
+ * kutular sıfıra düşüyor ve istasyonlar malzeme bekliyordu (480 dakikada
+ * 4 tohum toplamında 199 kez). 3'e çıkarınca 45'e indi ve dört tohumun
+ * dördünde de tam çıktı alındı.
+ *
+ * **Doli eklemek denendi ve işe yaramadı:** 9'dan 18'e çıkarıldığında bekleme
+ * sayısı 199'da sabit kaldı, çünkü arabalar zaten boştaydı (%28 meşguliyet).
+ * Kısıt taşıma kapasitesi değil, kutunun ne kadar boşalınca sipariş verdiği.
+ *
+ * Sipariş **miktarını** büyütmek de işi kötüleştiriyor: 3/8 kombinasyonu
+ * 90 bekleme üretti, 3/6 ise 45. Büyük parti, depoyu tek seferde boşaltıyor.
+ */
+const KANBAN_SIPARIS_NOKTASI = 3;
+
+const HAT_1_ISTASYONLARI: readonly StationConfig[] = [
   {
     id: "PRESS-01",
     name: "Pres Hattı 01",
@@ -76,7 +93,7 @@ const stations: readonly StationConfig[] = [
     runEnergyKwhPerTick: 4.2,
     idleEnergyKwhPerTick: 0.6,
     consumes: [{ materialId: "STEEL-COIL", quantity: 1 }],
-    reorderPoint: 2,
+    reorderPoint: KANBAN_SIPARIS_NOKTASI,
     reorderQuantity: 6,
     robotCount: 2,
     operatorCount: 2,
@@ -104,7 +121,7 @@ const stations: readonly StationConfig[] = [
     runEnergyKwhPerTick: 6.8,
     idleEnergyKwhPerTick: 0.9,
     consumes: [{ materialId: "WELD-WIRE", quantity: 1 }],
-    reorderPoint: 2,
+    reorderPoint: KANBAN_SIPARIS_NOKTASI,
     reorderQuantity: 6,
     robotCount: 6,
     operatorCount: 1,
@@ -132,7 +149,7 @@ const stations: readonly StationConfig[] = [
     runEnergyKwhPerTick: 9.5,
     idleEnergyKwhPerTick: 2.4,
     consumes: [{ materialId: "PAINT-KIT", quantity: 1 }],
-    reorderPoint: 2,
+    reorderPoint: KANBAN_SIPARIS_NOKTASI,
     reorderQuantity: 6,
     robotCount: 4,
     operatorCount: 1,
@@ -154,7 +171,7 @@ const stations: readonly StationConfig[] = [
     runEnergyKwhPerTick: 3.1,
     idleEnergyKwhPerTick: 0.8,
     consumes: [{ materialId: "TRIM-KIT", quantity: 1 }],
-    reorderPoint: 2,
+    reorderPoint: KANBAN_SIPARIS_NOKTASI,
     reorderQuantity: 6,
     robotCount: 3,
     operatorCount: 8,
@@ -212,10 +229,124 @@ const stations: readonly StationConfig[] = [
   },
 ];
 
+/**
+ * Bir hattın istasyon kimlikleri.
+ *
+ * Hat 1'inkiler olduğu gibi bırakıldı: bu kimlikler kayıtlı veri kümelerinde,
+ * senaryolarda ve testlerde geçiyor ve onları yeniden numaralandırmak, işe
+ * yaramayan bir değişiklik için doksan küsur yeri elden geçirmek olurdu.
+ * Kaynak kodda gördüğünüz numaralar bu yüzden tesis genelinde sıralı: sahada da
+ * kaynak hücreleri hat hat değil, tesis genelinde numaralanır.
+ */
+interface HatTanimi {
+  readonly id: string;
+  readonly model: string;
+  /** Şablondaki sıraya karşılık gelen istasyon kimlikleri. */
+  readonly istasyonlar: readonly string[];
+  /** Hattın plan üzerindeki Y'si; istasyonların X'i şablondan geliyor. */
+  readonly planY: number;
+  readonly demandPerShift: number;
+}
+
+/**
+ * Tesisteki üç hat.
+ *
+ * Üçü de **aynı mantıkla** çalışıyor: aynı rota, aynı tamir kuralı, aynı
+ * tampon boyutları. Fark tek bir şeyde: ürettikleri model. Sahada da böyle
+ * olur — hatlar birbirinin kopyasıdır, üzerlerinden geçen araç değişir.
+ *
+ * Model adları kurgusal; KOÇ OTOMOTİV'in kendi ürün ailesi.
+ */
+const HATLAR: readonly HatTanimi[] = [
+  {
+    id: "LINE-01",
+    model: "Meltem",
+    istasyonlar: ["PRESS-01", "WELD-04", "PAINT-01", "ASSEMBLY-01", "FINAL-QC", "REWORK-01"],
+    planY: 0,
+    demandPerShift: 60,
+  },
+  {
+    id: "LINE-02",
+    model: "Poyraz",
+    istasyonlar: ["PRESS-02", "WELD-05", "PAINT-02", "ASSEMBLY-02", "FINAL-QC-02", "REWORK-02"],
+    planY: 46,
+    demandPerShift: 60,
+  },
+  {
+    id: "LINE-03",
+    model: "Lodos",
+    istasyonlar: ["PRESS-03", "WELD-06", "PAINT-03", "ASSEMBLY-03", "FINAL-QC-03", "REWORK-03"],
+    planY: 92,
+    demandPerShift: 60,
+  },
+];
+
+/**
+ * Hat aralığı.
+ *
+ * Bir hattın kendi doli koridoru (+18) ve tamir hücresi (+28) var; bir sonraki
+ * hat bunların ötesinde başlamalı, yoksa bir hattın tamir hücresi diğerinin
+ * içine girer. Aradaki 18 birim, yaya ve forklift geçişi için bırakılan pay.
+ */
+export const HAT_ARALIGI = 46;
+
+/** Bir hattın istasyonlarını şablondan üret. */
+function hatIstasyonlari(hat: HatTanimi): StationConfig[] {
+  return HAT_1_ISTASYONLARI.map((sablon, index) => {
+    const id = hat.istasyonlar[index];
+    if (!id) throw new Error(`${hat.id}: ${sablon.id} için istasyon kimliği tanımlanmamış`);
+    // Ad hattı söylemeli: ekranda "Pres Hattı 02" ile "Pres Hattı 01"
+    // karışmasın. Sonunda numara olmayan istasyona ("Son Kalite Kontrol")
+    // numara ekleniyor — yoksa üç hatta üç ayrı istasyon aynı adı taşırdı.
+    const hatNo = hat.id.slice(-2);
+    const numarali = /\d+$/.test(sablon.name);
+
+    return {
+      ...sablon,
+      id,
+      name: numarali ? sablon.name.replace(/\d+$/, hatNo) : `${sablon.name} ${hatNo}`,
+      lineId: hat.id,
+      // X şablondan (rota boyunca sıra), Y hattan.
+      position: [sablon.position[0], sablon.position[1] + hat.planY] as [number, number],
+    };
+  });
+}
+
+const stations: readonly StationConfig[] = HATLAR.flatMap(hatIstasyonlari);
+
+const lines: readonly LineConfig[] = HATLAR.map((hat) => ({
+  id: hat.id,
+  route: hat.istasyonlar.slice(0, -1),
+  reworkStationId: hat.istasyonlar[hat.istasyonlar.length - 1]!,
+  wipCap: 6,
+  demandPerShift: hat.demandPerShift,
+  model: hat.model,
+}));
+
+/**
+ * Her hatta üç iş emri, hepsi o hattın kendi modeli.
+ *
+ * Miktarlar ve terminler hatlar arasında aynı: üç hat da aynı yükü çekiyor, ki
+ * aralarındaki fark performanstan gelsin, plandan değil. Hat 1'in emir
+ * numaraları korundu — senaryolar ve testler onlara referans veriyor.
+ */
+const IS_EMRI_SABLONU = [
+  { quantity: 20, priority: 1, dueTick: 200 },
+  { quantity: 20, priority: 2, dueTick: 320 },
+  { quantity: 20, priority: 3, dueTick: 460 },
+] as const;
+
+const workOrders = HATLAR.flatMap((hat, hatIndex) =>
+  IS_EMRI_SABLONU.map((sablon, index) => ({
+    id: `WO-2026-${String(hatIndex * IS_EMRI_SABLONU.length + index + 1).padStart(3, "0")}`,
+    lineId: hat.id,
+    productDefinitionId: hat.model.toLocaleUpperCase("tr-TR"),
+    ...sablon,
+  })),
+);
+
 export const factoryConfig: FactoryConfig = {
-  lineId: "LINE-01",
-  route: ["PRESS-01", "WELD-04", "PAINT-01", "ASSEMBLY-01", "FINAL-QC"],
-  reworkStationId: "REWORK-01",
+  lines,
   stations,
   materials: [
     {
@@ -223,7 +354,7 @@ export const factoryConfig: FactoryConfig = {
       name: "Sac rulo",
       unit: "rulo",
       supplyIntervalTicks: 24,
-      supplyQuantity: 4,
+      supplyQuantity: 4 * HATLAR.length,
       incomingRejectRate: 0.03,
       shelfLifeTicks: null,
     },
@@ -232,7 +363,7 @@ export const factoryConfig: FactoryConfig = {
       name: "Kaynak teli makarası",
       unit: "makara",
       supplyIntervalTicks: 40,
-      supplyQuantity: 7,
+      supplyQuantity: 7 * HATLAR.length,
       incomingRejectRate: 0.02,
       shelfLifeTicks: null,
     },
@@ -241,7 +372,7 @@ export const factoryConfig: FactoryConfig = {
       name: "Çift bileşen boya seti",
       unit: "set",
       supplyIntervalTicks: 30,
-      supplyQuantity: 5,
+      supplyQuantity: 5 * HATLAR.length,
       incomingRejectRate: 0.04,
       // Paint has a pot life, so its lots are issued FEFO rather than FIFO.
       shelfLifeTicks: 600,
@@ -251,16 +382,12 @@ export const factoryConfig: FactoryConfig = {
       name: "İç döşeme seti",
       unit: "set",
       supplyIntervalTicks: 30,
-      supplyQuantity: 5,
+      supplyQuantity: 5 * HATLAR.length,
       incomingRejectRate: 0.02,
       shelfLifeTicks: null,
     },
   ],
-  workOrders: [
-    { id: "WO-2026-001", productDefinitionId: "SEDAN-A", quantity: 20, priority: 1, dueTick: 200 },
-    { id: "WO-2026-002", productDefinitionId: "SEDAN-A", quantity: 20, priority: 2, dueTick: 320 },
-    { id: "WO-2026-003", productDefinitionId: "SUV-B", quantity: 20, priority: 3, dueTick: 460 },
-  ],
+  workOrders,
   shipmentPlan: {
     customer: "EU-DEALER-NETWORK",
     destination: "Bremerhaven",
@@ -269,15 +396,44 @@ export const factoryConfig: FactoryConfig = {
     loadingTicks: 3,
     transitTicks: 12,
   },
-  wipCap: 6,
   maxReworkPasses: 2,
   agvTicksPerDistance: 1,
-  agvCount: 3,
+  // Doli sayısı hat başına üç.
+  //
+  // Üretimi üçe katlayıp lojistiği olduğu yerde bırakmak, iki hat eklemek
+  // değil iki *aç* hat eklemek olurdu: ölçüldü, hatlar besleme bekleyerek
+  // birbirinin önünü kesiyordu.
+  agvCount: 3 * HATLAR.length,
   agvHandlingTicks: 1,
   analysisWindowTicks: 20,
-  demandPerShift: 60,
   shiftTicks: 480,
 };
+
+export function lineById(config: FactoryConfig, id: string): LineConfig {
+  const line = config.lines.find((candidate) => candidate.id === id);
+  if (!line) throw new Error(`unknown line: ${id}`);
+  return line;
+}
+
+/** Bir istasyonun bağlı olduğu hat. */
+export function lineOfStation(config: FactoryConfig, stationId: string): LineConfig {
+  return lineById(config, stationById(config, stationId).lineId);
+}
+
+/** Tesisin toplam vardiya talebi — takt hesabı bunun üzerinden. */
+export function totalDemandPerShift(config: FactoryConfig): number {
+  return config.lines.reduce((total, line) => total + line.demandPerShift, 0);
+}
+
+/** Rotada olan bütün istasyonlar; tamir hücreleri hariç. */
+export function routeStationIds(config: FactoryConfig): Set<string> {
+  return new Set(config.lines.flatMap((line) => line.route));
+}
+
+/** Bu istasyon bir tamir hücresi mi? */
+export function isReworkStation(config: FactoryConfig, stationId: string): boolean {
+  return config.lines.some((line) => line.reworkStationId === stationId);
+}
 
 export function stationById(config: FactoryConfig, id: string): StationConfig {
   const station = config.stations.find((candidate) => candidate.id === id);

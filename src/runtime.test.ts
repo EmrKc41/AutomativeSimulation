@@ -208,27 +208,39 @@ test("subscribers can unsubscribe and stop receiving frames", () => {
 test("a stopped station raises an andon and clears it only when it runs again", async () => {
   const runtime = new SimulationRuntime({ seed: 42, scenario: "machine_failure" });
 
+  /**
+   * Kontrol **senaryonun durdurduğu istasyona** bakıyor, tesisin geneline
+   * değil.
+   *
+   * Önceden "40. dakikadan önce hiçbir yerde andon yok" deniyordu; bu, tek
+   * hatlı ve altı makineli tesiste tutuyordu. Üç hatta on sekiz makine varken
+   * 40. dakikadan önce rastgele bir arıza çıkması olağan — ve o arıza bu
+   * testin anlattığı şeyle ilgisiz. Kontrolü tesis sessizliğine bağlamak,
+   * doğru çalışan andon'u yanlış saymak olurdu.
+   */
+  const kaynakDurusu = () =>
+    runtime.getFrame().andon.stops.find((stop) => stop.machineId === "WELD-04");
+
   runtime.execute({ type: "STEP", ticks: 39 });
-  assert.equal(runtime.getFrame().andon.active, false, "hat henüz durmadı");
+  assert.equal(kaynakDurusu(), undefined, "kaynak istasyonu henüz durmadı");
 
   // The scenario stops welding at minute 40.
   runtime.execute({ type: "STEP", ticks: 6 });
   const stopped = runtime.getFrame().andon;
+  const kaynak = kaynakDurusu();
   assert.equal(stopped.active, true);
-  assert.equal(stopped.stops.length, 1);
-  assert.equal(stopped.stops[0]?.machineId, "WELD-04");
-  assert.equal(stopped.stops[0]?.since, 40);
-  assert.ok((stopped.stops[0]?.elapsedMinutes ?? 0) > 0);
-  assert.equal(stopped.raisedAt, 40);
+  assert.ok(kaynak, "senaryonun durdurduğu istasyon andon listesinde olmalı");
+  assert.equal(kaynak.since, 40);
+  assert.ok(kaynak.elapsedMinutes > 0);
+  // Andon en erken duruşta yükselir; kaynak duruşu ondan sonra olamaz.
+  assert.ok(stopped.raisedAt !== null && stopped.raisedAt <= 40);
 
   // It stays raised for the whole repair, not just the first tick.
   runtime.execute({ type: "STEP", ticks: 10 });
-  assert.equal(runtime.getFrame().andon.active, true, "onarım sürerken uyarı düşmemeli");
+  assert.ok(kaynakDurusu(), "onarım sürerken uyarı düşmemeli");
 
   runtime.execute({ type: "STEP", ticks: 60 });
-  const recovered = runtime.getFrame().andon;
-  assert.equal(recovered.active, false, "makine çalışınca uyarı kendiliğinden kapanmalı");
-  assert.equal(recovered.raisedAt, null);
+  assert.equal(kaynakDurusu(), undefined, "makine çalışınca uyarı kendiliğinden kapanmalı");
   runtime.dispose();
 });
 

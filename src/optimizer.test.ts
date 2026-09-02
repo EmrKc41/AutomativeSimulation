@@ -300,11 +300,23 @@ test("a scenario with no lateness to remove is left completely alone", () => {
 });
 
 test("the rejected policy is still measurably worse, so the record stands", () => {
-  // This test exists so the write-up expires loudly rather than being quoted
-  // after it stopped being true. It is checked on the same four seeds the
-  // finding is based on: an earlier version used two, which is a smaller
-  // sample than the claim it was guarding, and on two seeds the lateness
-  // figure genuinely points the other way.
+  /**
+   * Bu test, yazılan gerekçenin sessizce eskimesini engellemek için var — ve
+   * bir kez işini yaptı.
+   *
+   * Kural tek hatlı tesiste **üç** gerekçeyle reddedilmişti: gecikme, en kötü
+   * iş emri ve doli yolu. Tesis üç hatta çıkınca üçüncüsü düştü: on iki hat
+   * kenarı kutusu ve dokuz araba varken "en yakın aracı seç" gerçekten yol
+   * kazandırıyor (600 dk, 4 tohum, bütün senaryolar: −1159 dk yol, −835 dk boş
+   * yol).
+   *
+   * Ret **duruyor**, çünkü gecikme 1640 dk, en kötü iş emri 526 dk artıyor ve
+   * tesis gecikmeyle ölçülüyor, doli kilometresiyle değil. Ama gerekçe artık
+   * iki maddeli; üç yazmak, ölçümün söylemediğini söylemek olurdu.
+   *
+   * Aynı dört tohum: daha erken bir sürüm iki tohum kullanıyordu, bu da
+   * koruduğu iddiadan küçük bir örneklemdi.
+   */
   let lateness = 0;
   let worst = 0;
   let travel = 0;
@@ -323,10 +335,16 @@ test("the rejected policy is still measurably worse, so the record stands", () =
     }
   }
 
-  // All three of the reasons the policy was rejected, not just one of them.
-  assert.ok(travel > 0, `en yakın araç kuralı artık yolu ${travel} dk değiştiriyor`);
+  // Reddin ayakta duran iki gerekçesi.
   assert.ok(lateness > 0, `gecikme ${lateness} dk; reddedilme gerekçesi yenilenmeli`);
   assert.ok(worst > 0, `en kötü iş emri ${worst} dk; reddedilme gerekçesi yenilenmeli`);
+
+  // Ve düşen gerekçe: yol artık kuralın *lehine*. Bu da bir ölçüm, o yüzden
+  // o da korunuyor — geri dönerse kayıt yine yüksek sesle eskisin.
+  assert.ok(
+    travel < 0,
+    `yol farkı ${travel} dk; üç hatlı tesiste kuralın yol kazancı kayboldu, gerekçe yenilenmeli`,
+  );
 });
 
 test("empty running is measured in the same unit as travel", () => {

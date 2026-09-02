@@ -90,9 +90,32 @@ export function agvWorld(config: FactoryDescriptor, location: string): World {
   return [x, 0.18, z];
 }
 
-/** Koridorun dünya koordinatındaki Z'si. */
-export function aisleZ(): number {
-  return toWorld(0, AISLE_PLAN_Y)[2];
+/**
+ * Bir hattın plan üzerindeki Y'si — istasyonlarının bulunduğu satır.
+ *
+ * Hatlar plan üzerinde alt alta; koridor da tamir hücresi de hattın kendi
+ * satırına göre konumlanıyor. Tek bir sabit koridor, üç hattı da aynı yoldan
+ * geçirirdi.
+ */
+export function linePlanY(config: FactoryDescriptor, lineId: string): number {
+  const line = config.lines.find((candidate) => candidate.id === lineId);
+  const first = line?.route[0];
+  const station = config.stations.find((candidate) => candidate.id === first);
+  return station?.position[1] ?? 0;
+}
+
+/** Bir hattın doli koridorunun dünya Z'si. */
+export function aisleZ(config: FactoryDescriptor, lineId: string): number {
+  return toWorld(0, linePlanY(config, lineId) + AISLE_PLAN_Y)[2];
+}
+
+/** Bir konumun ait olduğu hat; ortak alanlar için ilk hat. */
+export function lineOfLocation(config: FactoryDescriptor, location: string): string {
+  const stationId = location.startsWith("LINE-SIDE/")
+    ? location.slice("LINE-SIDE/".length)
+    : location;
+  const station = config.stations.find((candidate) => candidate.id === stationId);
+  return station?.lineId ?? config.lines[0]?.id ?? "";
 }
 
 /**
@@ -104,8 +127,7 @@ export function aisleZ(): number {
  * çizili koridorun tamamen dışından. Koridor boş duruyor, hareket ise
  * görünmüyordu.
  */
-function agvPath(from: World, to: World): readonly World[] {
-  const koridor = aisleZ();
+function agvPath(from: World, to: World, koridor: number): readonly World[] {
   return [from, [from[0], from[1], koridor], [to[0], to[1], koridor], to];
 }
 
@@ -171,7 +193,15 @@ export interface Zone {
  * kapıda değil, kalite kontrolün yanında. Önceki yerleşimde en dışarıdaydı ve
  * henüz kontrol edilmemiş malın oraya gittiğini ima ediyordu.
  */
-export const ZONES: readonly Zone[] = [
+/**
+ * Ortak alanlar: bütün hatların paylaştığı yerler.
+ *
+ * Sıra malzemenin izlediği yol: **mal kabul → giriş kalite → depo**, sonra
+ * hatlar, sonra **bitmiş ürün → sevkiyat**. Karantina bu sıranın bir durağı
+ * değil, giriş kalitenin sonucu; o yüzden kapıda değil, kalite kontrolün
+ * yanında.
+ */
+const ORTAK_BOLGELER: readonly Zone[] = [
   // Mal kabul bağımsız bir alan: aradaki boşluk tırın manevra sahası ve
   // planda "burası ayrı bir bölge" demenin yolu.
   { id: "inbound", label: "Mal Kabul", rect: [-30, -12, -10, 12], tone: "logistics" },
@@ -179,12 +209,51 @@ export const ZONES: readonly Zone[] = [
   { id: "gate", label: "Üretime Geçiş", rect: [5, -6, 12, 7], tone: "ok" },
   { id: "quarantine", label: "Karantina", rect: [-8, 14, 4, 27], tone: "risk" },
   { id: "store", label: "İç Lojistik Deposu", rect: [14, -7, 28, 8], tone: "logistics" },
-  { id: "line", label: "Hat 01", rect: [32, -6, 130, 8], tone: "ok" },
-  { id: "rework", label: "Tamir Hücresi", rect: [90, 20, 114, 36], tone: "risk" },
   { id: "finished", label: "Bitmiş Ürün", rect: [132, -8, 150, 10], tone: "ok" },
   // Sevkiyat da bağımsız, mal kabulle aynı mantık.
   { id: "shipping", label: "Sevkiyat", rect: [162, -12, 186, 12], tone: "logistics" },
 ];
+
+/**
+ * Bütün bölgeler: ortak alanlar, artı her hattın kendi şeridi ve tamir
+ * hücresi.
+ *
+ * Hat bölgeleri elle yazılıyken tek hat vardı ve rakamlar dosyada sabitti.
+ * Artık hattın gerçek istasyon konumundan hesaplanıyor: bir hattın yeri
+ * değiştiğinde zemindeki alanı da onunla birlikte gidiyor.
+ */
+export function zonesOf(config: FactoryDescriptor): Zone[] {
+  const hatBolgeleri = config.lines.flatMap<Zone>((line) => {
+    const planY = linePlanY(config, line.id);
+    const xs = line.route
+      .map((id) => config.stations.find((station) => station.id === id)?.position[0])
+      .filter((x): x is number => x !== undefined);
+    if (xs.length === 0) return [];
+
+    const rework = config.stations.find((station) => station.id === line.reworkStationId);
+    const reworkY = rework?.position[1] ?? planY + 28;
+    const reworkX = rework?.position[0] ?? Math.max(...xs);
+
+    return [
+      {
+        id: `line:${line.id}`,
+        // Model adı zeminde: üç şerit aynı görünüyor, üzerlerinden geçen araç
+        // farklı.
+        label: `${line.id} · ${line.model}`,
+        rect: [Math.min(...xs) - 8, planY - 6, Math.max(...xs) + 10, planY + 8],
+        tone: "ok",
+      },
+      {
+        id: `rework:${line.id}`,
+        label: "Tamir Hücresi",
+        rect: [reworkX - 12, reworkY - 8, reworkX + 12, reworkY + 8],
+        tone: "risk",
+      },
+    ];
+  });
+
+  return [...ORTAK_BOLGELER, ...hatBolgeleri];
+}
 
 export interface CameraBookmark {
   readonly id: string;
@@ -246,7 +315,7 @@ const OVERVIEW_PITCH_DEG = 38;
  */
 export function overviewExtent(config: FactoryDescriptor): readonly World[] {
   const points: World[] = [];
-  for (const zone of ZONES) {
+  for (const zone of zonesOf(config)) {
     const [x0, y0, x1, y1] = zone.rect;
     points.push(toWorld(x0, y0), toWorld(x1, y0), toWorld(x0, y1), toWorld(x1, y1));
   }
@@ -522,7 +591,12 @@ export function placeAgvs(config: FactoryDescriptor, frame: FactoryFrame): Place
     const from = agvWorld(config, agv.fromLocation);
     const to = agvWorld(config, agv.toLocation);
     const t = agv.status === "IDLE" ? 0 : Math.max(0, Math.min(1, agv.progress));
-    const { position, heading } = alongPath(agvPath(from, to), t);
+    // Araba **hangi hatta hizmet ediyorsa** o hattın koridorundan gidiyor.
+    // Uçlardan biri depo (ortak), diğeri hücre; hattı hücre söylüyor.
+    const hat = agv.toLocation.startsWith("LINE-SIDE/")
+      ? lineOfLocation(config, agv.toLocation)
+      : lineOfLocation(config, agv.fromLocation);
+    const { position, heading } = alongPath(agvPath(from, to, aisleZ(config, hat)), t);
     return {
       id: agv.id,
       position,

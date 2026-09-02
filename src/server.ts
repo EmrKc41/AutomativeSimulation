@@ -5,7 +5,7 @@ import { WebSocketServer, type WebSocket } from "ws";
 import { runAllAnalyses } from "./analytics.ts";
 import { SUGGESTED_QUESTIONS, ask } from "./copilot.ts";
 import type { Command } from "./domain.ts";
-import { LOCATION_POSITIONS, factoryConfig } from "./factory.ts";
+import { LOCATION_POSITIONS, factoryConfig, totalDemandPerShift } from "./factory.ts";
 import { BRAND } from "./brand.ts";
 import { buildPdf, buildReportModel, buildWorkbook, reportFileName } from "./report/index.ts";
 import { SimulationRuntime } from "./runtime.ts";
@@ -133,15 +133,20 @@ function parseCommand(body: unknown): Command | null {
 
 function factoryDescriptor() {
   return {
-    line: {
-      id: factoryConfig.lineId,
-      route: factoryConfig.route,
-      reworkStationId: factoryConfig.reworkStationId,
-      wipCap: factoryConfig.wipCap,
+    lines: factoryConfig.lines.map((line) => ({
+      id: line.id,
+      model: line.model,
+      route: line.route,
+      reworkStationId: line.reworkStationId,
+      wipCap: line.wipCap,
+      demandPerShift: line.demandPerShift,
+      taktTime: factoryConfig.shiftTicks / line.demandPerShift,
+    })),
+    plant: {
       maxReworkPasses: factoryConfig.maxReworkPasses,
-      taktTime: factoryConfig.shiftTicks / factoryConfig.demandPerShift,
       shiftTicks: factoryConfig.shiftTicks,
-      demandPerShift: factoryConfig.demandPerShift,
+      demandPerShift: totalDemandPerShift(factoryConfig),
+      taktTime: factoryConfig.shiftTicks / totalDemandPerShift(factoryConfig),
     },
     stations: factoryConfig.stations,
     materials: factoryConfig.materials,

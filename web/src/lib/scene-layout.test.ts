@@ -11,7 +11,7 @@ import type {
 } from "@/lib/contract";
 import {
   SCENE_FOV_DEG,
-  ZONES,
+  zonesOf,
   bufferSlot,
   maxCameraDistance,
   overviewExtent,
@@ -46,12 +46,16 @@ import { MACHINE_STATE, PRODUCT_STATE, SHIPMENT_STATE, TONE } from "@/lib/status
 
 // --- fixtures ---------------------------------------------------------------
 
-function station(id: string, position: [number, number]): FactoryDescriptor["stations"][number] {
+function station(
+  id: string,
+  position: [number, number],
+  lineId = "LINE-01",
+): FactoryDescriptor["stations"][number] {
   return {
     id,
     name: id,
     workCenter: "Test",
-    lineId: "LINE-01",
+    lineId,
     cycleTicks: 4,
     cycleJitter: 1,
     bufferCapacity: 3,
@@ -77,17 +81,56 @@ function station(id: string, position: [number, number]): FactoryDescriptor["sta
   };
 }
 
+/**
+ * Kurgu üç hatlı: tesis de öyle.
+ *
+ * Tek hatlı bir kurgu, "hat başına" olması gereken her şeyi tek hat üzerinden
+ * doğrulardı ve iki hattın birbirine karışması testten kaçardı.
+ */
+const HAT_ARALIGI = 46;
+
+function hatIstasyonlari(lineId: string, planY: number, ekler: string) {
+  return [
+    station(`PRESS${ekler}`, [40, planY], lineId),
+    station(`WELD${ekler}`, [60, planY], lineId),
+    station(`PAINT${ekler}`, [80, planY], lineId),
+    station(`ASSEMBLY${ekler}`, [100, planY], lineId),
+    station(`FINAL-QC${ekler}`, [120, planY], lineId),
+    station(`REWORK${ekler}`, [100, planY + 28], lineId),
+  ];
+}
+
 const config: FactoryDescriptor = {
-  line: {
-    id: "LINE-01",
-    route: ["PRESS-01", "WELD-04", "PAINT-01", "ASSEMBLY-01", "FINAL-QC"],
-    reworkStationId: "REWORK-01",
-    wipCap: 6,
-    maxReworkPasses: 2,
-    taktTime: 8,
-    shiftTicks: 480,
-    demandPerShift: 60,
-  },
+  lines: [
+    {
+      id: "LINE-01",
+      model: "Meltem",
+      route: ["PRESS-01", "WELD-04", "PAINT-01", "ASSEMBLY-01", "FINAL-QC"],
+      reworkStationId: "REWORK-01",
+      wipCap: 6,
+      demandPerShift: 60,
+      taktTime: 8,
+    },
+    {
+      id: "LINE-02",
+      model: "Poyraz",
+      route: ["PRESS-02", "WELD-02", "PAINT-02", "ASSEMBLY-02", "FINAL-QC-02"],
+      reworkStationId: "REWORK-02",
+      wipCap: 6,
+      demandPerShift: 60,
+      taktTime: 8,
+    },
+    {
+      id: "LINE-03",
+      model: "Lodos",
+      route: ["PRESS-03", "WELD-03", "PAINT-03", "ASSEMBLY-03", "FINAL-QC-03"],
+      reworkStationId: "REWORK-03",
+      wipCap: 6,
+      demandPerShift: 60,
+      taktTime: 8,
+    },
+  ],
+  plant: { maxReworkPasses: 2, shiftTicks: 480, demandPerShift: 180, taktTime: 8 / 3 },
   stations: [
     station("PRESS-01", [40, 0]),
     station("WELD-04", [60, 0]),
@@ -95,6 +138,8 @@ const config: FactoryDescriptor = {
     station("ASSEMBLY-01", [100, 0]),
     station("FINAL-QC", [120, 0]),
     station("REWORK-01", [100, 28]),
+    ...hatIstasyonlari("LINE-02", HAT_ARALIGI, "-02"),
+    ...hatIstasyonlari("LINE-03", HAT_ARALIGI * 2, "-03"),
   ],
   materials: [],
   workOrders: [],
@@ -150,6 +195,7 @@ function product(id: string, status: ProductUnit["status"]): ProductUnit {
   return {
     id,
     workOrderId: "WO-1",
+    lineId: "LINE-01",
     status,
     stageIndex: 0,
     reworkCount: 0,
@@ -707,7 +753,7 @@ describe("mal kabul, giriş kalite ve sevkiyat", () => {
   });
 
   test("the zones follow the same order and do not overlap the line", () => {
-    const byId = new Map(ZONES.map((zone) => [zone.id, zone]));
+    const byId = new Map(zonesOf(config).map((zone) => [zone.id, zone]));
     const inbound = byId.get("inbound");
     const iqc = byId.get("iqc");
     const store = byId.get("store");
@@ -782,8 +828,8 @@ describe("mal kabul, giriş kalite ve sevkiyat", () => {
 
 describe("yerleşim revizyonu: bağımsız alanlar, düz tırlar, tanımlı güzergâh", () => {
   test("receiving is an area of its own, not folded into the production side", () => {
-    const inbound = ZONES.find((zone) => zone.id === "inbound")!;
-    const iqc = ZONES.find((zone) => zone.id === "iqc")!;
+    const inbound = zonesOf(config).find((zone) => zone.id === "inbound")!;
+    const iqc = zonesOf(config).find((zone) => zone.id === "iqc")!;
 
     // Aradaki boşluk tırın manevra sahası. Bitişik olsalardı mal kabul,
     // üretim alanının bir köşesi olurdu.
@@ -1092,7 +1138,7 @@ describe("yerleşim revizyonu: bağımsız alanlar, düz tırlar, tanımlı güz
    */
   test("trucks enter through a security gate outside the plant", () => {
     const gate = securityGatePlacement(config);
-    const inbound = ZONES.find((zone) => zone.id === "inbound")!;
+    const inbound = zonesOf(config).find((zone) => zone.id === "inbound")!;
     const [zoneX, , zoneZ] = toWorld(inbound.rect[0], inbound.rect[3]);
 
     // Kapı, mal kabul bölgesinin hem solunda hem önünde: tır önce oradan geçer.
@@ -1244,8 +1290,27 @@ describe("yerleşim revizyonu: bağımsız alanlar, düz tırlar, tanımlı güz
 
     // Yolun ortasında araba koridorda olmalı, iki durak arasındaki düz
     // çizginin üzerinde değil.
-    expect(yolda(0.5).position[2]).toBeCloseTo(aisleZ(), 6);
+    expect(yolda(0.5).position[2]).toBeCloseTo(aisleZ(config, "LINE-01"), 6);
     expect(AISLE_PLAN_Y).toBeGreaterThan(8);
+
+    // Ve **kendi hattının** koridorundan: ikinci hattın arabası birincinin
+    // koridoruna girmemeli. Tek sabit koridor varken tam olarak bu oluyordu.
+    const ikinciHat = placeAgvs(
+      config,
+      frame({
+        agvs: [
+          agv({
+            id: "AGV-2",
+            status: "TO_DROP",
+            fromLocation: "RAW-STOCK-A",
+            toLocation: "LINE-SIDE/ASSEMBLY-02",
+            progress: 0.5,
+          }),
+        ],
+      }),
+    )[0]!;
+    expect(ikinciHat.position[2]).toBeCloseTo(aisleZ(config, "LINE-02"), 6);
+    expect(aisleZ(config, "LINE-02")).not.toBeCloseTo(aisleZ(config, "LINE-01"), 3);
 
     // Uçlar yerinde: depodan çıkıyor, hücrede bitiyor.
     const depo = agvWorld(config, "RAW-STOCK-A");

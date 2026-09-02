@@ -19,7 +19,7 @@ import type { FactoryFrame, Machine, StationConfig } from "@/lib/contract";
 import {
   SCALE,
   SCENE_FOV_DEG,
-  ZONES,
+  zonesOf,
   planPosition,
   cameraBookmarks,
   aisleZ,
@@ -104,7 +104,7 @@ export function FactoryScene(props: FactorySceneProps) {
       />
 
       <Ground />
-      <Zones showLabels={props.showLabels} />
+      <Zones config={props.config} showLabels={props.showLabels} />
       <TruckRoad config={props.config} />
       <TugRoutes config={props.config} />
       <Conveyor config={props.config} />
@@ -169,10 +169,10 @@ function Ground() {
   );
 }
 
-function Zones({ showLabels }: { showLabels: boolean }) {
+function Zones({ config, showLabels }: { config: FactoryDescriptor; showLabels: boolean }) {
   return (
     <group>
-      {ZONES.map((zone) => {
+      {zonesOf(config).map((zone) => {
         const [x0, y0, x1, y1] = zone.rect;
         const [wx, , wz] = toWorld((x0 + x1) / 2, (y0 + y1) / 2);
         const width = (x1 - x0) * SCALE;
@@ -215,19 +215,32 @@ function Zones({ showLabels }: { showLabels: boolean }) {
  * yapıyorlar: bir doli bu çizginin dışına çıkmaz.
  */
 function TugRoutes({ config }: { config: FactoryDescriptor }) {
+  // Her hattın kendi koridoru var. Tek koridor çizmek, üç hattın arabalarını
+  // aynı yoldan geçiriyormuş gibi gösterirdi.
+  return (
+    <group>
+      {config.lines.map((line) => (
+        <TugRoute key={line.id} config={config} lineId={line.id} />
+      ))}
+    </group>
+  );
+}
+
+function TugRoute({ config, lineId }: { config: FactoryDescriptor; lineId: string }) {
   const [storeX] = toWorld(...planPosition(config, "RAW-STOCK-A"));
+  const line = config.lines.find((candidate) => candidate.id === lineId);
 
   // Ana koridor deponun önünden hattın sonuna kadar; ondan her hücreye bir
   // sapma çıkıyor.
   const targets = config.stations
-    .filter((station) => config.line.route.includes(station.id))
+    .filter((station) => line?.route.includes(station.id))
     .map((station) => toWorld(station.position[0], station.position[1]));
   const lastX = targets.at(-1)?.[0] ?? storeX;
   // Koridorun yeri `scene-layout` içinde tanımlı, burada değil: çizgiyi bir
   // yerde, arabaları başka bir yerde konumlandırmak tam olarak buradaki
   // hataydı — zemindeki koridor boş duruyor, arabalar hattın dibinden
   // geçiyordu.
-  const koridorZ = aisleZ();
+  const koridorZ = aisleZ(config, lineId);
 
   return (
     <group>
@@ -304,27 +317,82 @@ function TruckRoad({ config }: { config: FactoryDescriptor }) {
  * sections with rails and rollers read as a line a car travels along, and that
  * is the whole point of this view.
  */
+/**
+ * İstasyonun bant için boş bıraktığı yarı genişlik, dünya biriminde.
+ *
+ * İstasyonlar birbirinden 7 birim uzakta, makine gövdeleri ise ~4,2 birim.
+ * Yani aradaki koridor dar; açıklığı 2,6'ya kurmak bandı tamamen yok etti
+ * (kalan 1,8 birim bir bant parçasından kısa). 1,7 ile bant makinenin
+ * kenarına kadar geliyor, içinden geçmiyor — anlatmak istediğimiz de bu.
+ */
+const ISTASYON_ACIKLIGI = 1.7;
+
 function Conveyor({ config }: { config: FactoryDescriptor }) {
-  const first = config.line.route[0];
-  const last = config.line.route[config.line.route.length - 1];
+  return (
+    <group>
+      {config.lines.map((line) => (
+        <ConveyorLine key={line.id} config={config} route={line.route} />
+      ))}
+    </group>
+  );
+}
+
+function ConveyorLine({
+  config,
+  route,
+}: {
+  config: FactoryDescriptor;
+  route: readonly string[];
+}) {
+  const first = route[0];
+  const last = route[route.length - 1];
   if (!first || !last) return null;
   const [x0, , z] = stationWorld(config, first);
   const [x1] = stationWorld(config, last);
 
-  // One section per 4 world units, which is the modelled length of a section.
-  const span = x1 - x0 + 8;
-  // One modelled section is 4 m long; at the current asset scale that is
-  // 4 * ASSET_SCALE world units.
-  const count = Math.max(1, Math.round(span / (4 * ASSET_SCALE)));
-  const step = span / count;
-  const start = x0 - 4 + step / 2;
+  /*
+   * Bant istasyonların **arasında** akıyor, içinden değil.
+   *
+   * Önceki sürümde tek bir kesintisiz bant baştan sona uzanıyordu ve
+   * makinelerin gövdesinden geçip çıkıyordu: pres gövdesinin ortasından bir
+   * bant görünüyordu. Sahada bant prese *girer* ve presten *çıkar*; istasyonun
+   * altından geçmez.
+   *
+   * Her istasyonun etrafında bir açıklık bırakılıyor; bant o boşluklarda değil,
+   * yalnızca aradaki koridorlarda çiziliyor.
+   */
+  const bosluk = ISTASYON_ACIKLIGI;
+  const duraklar = route.map((id) => stationWorld(config, id)[0]);
+
+  // Bandın parçaları: hattın başından ilk istasyona, istasyonlar arasına ve
+  // son istasyondan hattın sonuna.
+  const araliklar: [number, number][] = [];
+  araliklar.push([x0 - 4, (duraklar[0] ?? x0) - bosluk]);
+  for (let i = 0; i + 1 < duraklar.length; i += 1) {
+    araliklar.push([duraklar[i]! + bosluk, duraklar[i + 1]! - bosluk]);
+  }
+  araliklar.push([x1 + bosluk, x1 + 4]);
+
+  const uzunluk = 4 * ASSET_SCALE;
 
   return (
     <Suspense fallback={null}>
       <group>
-        {Array.from({ length: count }, (_, index) => (
-          <ConveyorSection key={index} position={[start + index * step, 0, z]} />
-        ))}
+        {araliklar.flatMap(([bas, son], aralikIndex) => {
+          const genislik = son - bas;
+          // Kısa koridorlarda bile en az bir parça: bandın makineye girip
+          // çıktığı görünmeli, yoksa istasyonlar birbirine bağlanmamış gibi
+          // duruyor.
+          if (genislik <= 0) return [];
+          const adet = Math.max(1, Math.round(genislik / uzunluk));
+          const adim = genislik / adet;
+          return Array.from({ length: adet }, (_, index) => (
+            <ConveyorSection
+              key={`${aralikIndex}-${index}`}
+              position={[bas + adim / 2 + index * adim, 0, z]}
+            />
+          ));
+        })}
       </group>
     </Suspense>
   );

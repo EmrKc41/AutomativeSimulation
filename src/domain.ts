@@ -179,6 +179,8 @@ export interface MaterialConfig {
 
 export interface WorkOrderConfig {
   readonly id: string;
+  /** Hangi hatta üretileceği. Ürün de hattını buradan alıyor. */
+  readonly lineId: string;
   readonly productDefinitionId: string;
   readonly quantity: number;
   readonly priority: number;
@@ -194,17 +196,33 @@ export interface ShipmentPlanConfig {
   readonly transitTicks: number;
 }
 
-export interface FactoryConfig {
-  readonly lineId: string;
+/**
+ * Bir üretim hattı.
+ *
+ * Tesiste birden fazla hat var ve her biri **kendi modelini** üretiyor. Rota,
+ * tamir hücresi ve hat tavanı hatta özel; mal kabul, depo, bitmiş ürün ve
+ * sevkiyat ise ortak — sahada da öyle: üç montaj hattı tek bir depodan beslenip
+ * tek bir sevkiyat sahasından çıkar.
+ */
+export interface LineConfig {
+  readonly id: string;
   /** Ordered production route; `reworkStationId` sits off the main route. */
   readonly route: readonly string[];
   readonly reworkStationId: string;
+  /** Maximum units allowed on this line at once (CONWIP cap). */
+  readonly wipCap: number;
+  /** Customer demand for this line, used for takt time. */
+  readonly demandPerShift: number;
+  /** Bu hattın ürettiği modelin adı — ekranda ve raporda görünen şey. */
+  readonly model: string;
+}
+
+export interface FactoryConfig {
+  readonly lines: readonly LineConfig[];
   readonly stations: readonly StationConfig[];
   readonly materials: readonly MaterialConfig[];
   readonly workOrders: readonly WorkOrderConfig[];
   readonly shipmentPlan: ShipmentPlanConfig;
-  /** Maximum units allowed on the line at once (CONWIP cap). */
-  readonly wipCap: number;
   /** Rework attempts allowed before a unit is scrapped. */
   readonly maxReworkPasses: number;
   /** Ticks an AGV needs per layout distance unit. */
@@ -213,8 +231,6 @@ export interface FactoryConfig {
   readonly agvHandlingTicks: number;
   /** Rolling window, in ticks, used by bottleneck and rate calculations. */
   readonly analysisWindowTicks: number;
-  /** Customer demand used for takt time. */
-  readonly demandPerShift: number;
   readonly shiftTicks: number;
 }
 
@@ -263,8 +279,16 @@ export interface ExecutionRecord {
 export interface ProductUnit {
   readonly id: string;
   readonly workOrderId: string;
+  /**
+   * Üretildiği hat.
+   *
+   * İş emrinden türetilebilirdi ama motor her adımda hattın rotasına bakıyor;
+   * her seferinde iş emrini aramak yerine burada duruyor. Ürün açıldığı anda
+   * yazılıyor ve bir daha değişmiyor — bir araç hat değiştirmez.
+   */
+  readonly lineId: string;
   status: ProductStatus;
-  /** Index into `FactoryConfig.route`. */
+  /** Index into the unit's own line route. */
   stageIndex: number;
   reworkCount: number;
   readonly consumedMaterialBatchIds: string[];
@@ -390,6 +414,7 @@ export interface Agv {
 
 export interface WorkOrder {
   readonly id: string;
+  readonly lineId: string;
   readonly productDefinitionId: string;
   readonly quantity: number;
   readonly priority: number;

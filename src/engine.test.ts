@@ -3,7 +3,7 @@ import test from "node:test";
 
 import type { SimulationResult } from "./domain.ts";
 import { run, snapshot, tick } from "./engine.ts";
-import { factoryConfig, lineSideLocation, stationById } from "./factory.ts";
+import { factoryConfig, lineById, lineSideLocation, stationById } from "./factory.ts";
 import { scenarios } from "./scenarios.ts";
 import { createSimulation, type SimulationState } from "./state.ts";
 
@@ -60,13 +60,22 @@ test("core invariants hold on every single tick", () => {
       if (machine.status === "RUNNING") assert.notEqual(machine.currentProductId, null);
     }
 
-    const wip = state.products.filter(
-      (product) =>
-        product.status === "QUEUED" ||
-        product.status === "IN_PRODUCTION" ||
-        product.status === "IN_REWORK",
-    ).length;
-    assert.ok(wip <= state.config.wipCap, `WIP cap exceeded at t=${state.time}: ${wip}`);
+    // Tavan **hat başına**: tesiste üç hat var ve birinin dolu olması
+    // diğerinin iş almasını engellemez. Toplamda saymak, üç hattı tek hat
+    // sanan bir kontrol olurdu ve gerçek bir taşmayı gizlerdi.
+    for (const line of state.config.lines) {
+      const wip = state.products.filter(
+        (product) =>
+          product.lineId === line.id &&
+          (product.status === "QUEUED" ||
+            product.status === "IN_PRODUCTION" ||
+            product.status === "IN_REWORK"),
+      ).length;
+      assert.ok(
+        wip <= line.wipCap,
+        `${line.id} WIP cap exceeded at t=${state.time}: ${wip} > ${line.wipCap}`,
+      );
+    }
 
     for (const product of state.products) {
       assert.ok(
@@ -110,8 +119,12 @@ test("only units that passed the final gate can be shipped", () => {
   for (const product of shipped) {
     assert.notEqual(product.completedAt, null, `${product.id} shipped without completing`);
     assert.notEqual(product.status, "SCRAPPED");
+    // Son kapı aracın **kendi hattının** son istasyonu. Sabit "FINAL-QC"
+    // yazıldığında, 2. ve 3. hatta çıkan araçlar için hiç muayene bulunamıyor
+    // ve kontrol sessizce boş bir listeye bakıyordu.
+    const finalGate = lineById(factoryConfig, product.lineId).route.at(-1);
     const finalInspections = result.inspections.filter(
-      (inspection) => inspection.productId === product.id && inspection.stationId === "FINAL-QC",
+      (inspection) => inspection.productId === product.id && inspection.stationId === finalGate,
     );
     assert.equal(
       finalInspections.at(-1)?.result,
@@ -123,10 +136,12 @@ test("only units that passed the final gate can be shipped", () => {
 
 test("units follow the approved route and rework returns them to the rejecting station", () => {
   const result = snapshot(run(start("quality_failure"), 300));
-  const route = factoryConfig.route;
 
   for (const product of result.products) {
-    const mainline = product.history.filter((record) => record.stationId !== "REWORK-01");
+    // Her araç **kendi hattının** rotasını izliyor.
+    const line = lineById(factoryConfig, product.lineId);
+    const route = line.route;
+    const mainline = product.history.filter((record) => record.stationId !== line.reworkStationId);
     let expected = 0;
     for (const record of mainline) {
       const index = route.indexOf(record.stationId);

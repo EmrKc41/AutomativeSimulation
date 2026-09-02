@@ -84,7 +84,7 @@ export function CommandCenter() {
       ) : null}
       <ControlBar
         frame={frame}
-        lineId={config?.line.id ?? "—"}
+        lineId={config ? config.lines.map((line) => line.id).join(" · ") : "—"}
         scenarios={config?.scenarios ?? []}
         connection={connection}
         stale={stale}

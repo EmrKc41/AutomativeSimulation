@@ -763,6 +763,23 @@ seçmekten iyi.
 > plan üretmektir. Ölçüm bunu gösterdi (yol _arttı_); düzeltildikten sonra bile
 > politika tabandan kötü çıktı.
 
+> **Güncelleme — tesis üç hatta çıkınca bu gerekçenin bir maddesi düştü.**
+> Yukarıdaki "yol artıyor" ölçümü tek hatlı, üç arabalı, dört hat kenarı
+> kutulu tesise aitti. On iki kutu ve dokuz araba varken "en yakın aracı seç"
+> gerçekten yol kazandırıyor: 600 dakika, dört tohum, bütün senaryolar
+> toplamında **1159 dakika daha az yol** ve **835 dakika daha az boş koşu**.
+> Sebebi de yukarıdakinin aynısı, tersine dönmüş hâli: artık alma noktaları
+> tek bir depo etrafında toplanmıyor, filo gerçekten yayılmış durumda ve
+> seçim yapacak bir şey var.
+>
+> **Ret yine de duruyor**, çünkü aynı ölçümde toplam gecikme **1640 dakika**,
+> en kötü iş emri **526 dakika** artıyor; tesis gecikmeyle ölçülüyor, doli
+> kilometresiyle değil. Ama gerekçe artık üç maddeli değil iki maddeli. Bunu
+> yazmak zorundayız: eski ölçümü olduğu gibi tekrarlamak, ölçümün artık
+> söylemediği bir şeyi söylemek olurdu. `optimizer.test.ts` içindeki koruma
+> her iki yönü de tutuyor — yol farkı geri dönerse kayıt yine yüksek sesle
+> eskiyecek.
+
 Aynı hatanın ölçüm tarafı da vardı: boş yol grid biriminde, toplam yol dakikada
 hesaplanıyordu, bu yüzden **her koşuda boş yol sıfır** raporlanıyordu. Sessizce
 hep sıfır olan bir gösterge, göstergesizlikten kötüdür.

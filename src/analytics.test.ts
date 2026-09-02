@@ -15,7 +15,7 @@ import {
   type Analysis,
 } from "./analytics.ts";
 import { run } from "./engine.ts";
-import { factoryConfig } from "./factory.ts";
+import { factoryConfig, lineOfStation, routeStationIds } from "./factory.ts";
 import { scenarios } from "./scenarios.ts";
 import { createSimulation, type SimulationState } from "./state.ts";
 
@@ -70,7 +70,7 @@ test("the constraint named is a real route station backed by its own record", ()
   assert.ok(analysis.findings.length > 0);
   const machineEvidence = analysis.findings[0]?.evidence.find((item) => item.kind === "machine");
   assert.ok(machineEvidence);
-  assert.ok(factoryConfig.route.includes(machineEvidence.id));
+  assert.ok(routeStationIds(factoryConfig).has(machineEvidence.id));
   assert.ok(state.machines.some((machine) => machine.id === machineEvidence.id));
 });
 
@@ -88,14 +88,17 @@ test("idle time is attributed to the right side of the constraint", () => {
   const analysis = explainBottleneck(state);
   const constraint = analysis.findings[0]?.evidence.find((item) => item.kind === "machine");
   assert.ok(constraint);
-  const constraintIndex = factoryConfig.route.indexOf(constraint.id);
+  // Yukarı/aşağı yalnızca kısıtın kendi hattı içinde anlamlı: tesiste üç hat
+  // var ve başka bir hattın makinesi bu rotada hiç bulunmaz.
+  const line = lineOfStation(factoryConfig, constraint.id);
+  const constraintIndex = line.route.indexOf(constraint.id);
 
   const downstream = analysis.findings.find((finding) =>
     finding.headline.includes("bekleyen istasyonlar"),
   );
   for (const evidence of downstream?.evidence ?? []) {
     assert.ok(
-      factoryConfig.route.indexOf(evidence.id) > constraintIndex,
+      line.route.indexOf(evidence.id) > constraintIndex,
       `${evidence.id} is not downstream of ${constraint.id}`,
     );
   }
@@ -105,7 +108,7 @@ test("idle time is attributed to the right side of the constraint", () => {
   );
   for (const evidence of upstream?.evidence ?? []) {
     assert.ok(
-      factoryConfig.route.indexOf(evidence.id) < constraintIndex,
+      line.route.indexOf(evidence.id) < constraintIndex,
       `${evidence.id} is not upstream of ${constraint.id}`,
     );
   }
@@ -206,11 +209,36 @@ test("quality analysis reports the defect Pareto and any escapes it can prove", 
 });
 
 test("material analysis only claims a shortage when the log contains one", () => {
-  const healthy = explainMaterial(simulate("normal"));
-  const starved = explainMaterial(simulate("material_shortage"));
+  /**
+   * Özetin **kayıtla uyuşması** aranıyor, belirli bir cümle değil.
+   *
+   * Önceden "normal koşuda eksik olmaz" diye sabitlenmişti; bu, tek hatlı
+   * tesiste doğruydu. Üç hat aynı depodan beslenince hat kenarında kısa
+   * boşluklar oluşabiliyor — çıktıyı düşürmeyen ama gerçekten yaşanan
+   * boşluklar. Beklentiyi sabit tutmak, doğru raporu yanlış saymak olurdu.
+   */
+  const sayim = (state: SimulationState) =>
+    state.events.filter(
+      (event) => event.type === "MATERIAL_SHORTAGE" || event.type === "STATION_STARVED",
+    ).length;
 
-  assert.match(healthy.summary, /malzeme eksiği olmadı/);
-  assert.match(starved.summary, /kesintiye uğrattı/);
+  for (const kind of ["normal", "material_shortage"] as const) {
+    const state = simulate(kind);
+    const analysis = explainMaterial(state);
+    const kayit = sayim(state);
+
+    if (kayit === 0) {
+      assert.match(analysis.summary, /malzeme eksiği olmadı/, `${kind}: kayıt boş ama özet dolu`);
+    } else {
+      assert.match(analysis.summary, new RegExp(`${kayit} kez`), `${kind}: özet kayıtla uyuşmuyor`);
+    }
+  }
+
+  // Ve senaryo adını hak etmeli: malzeme senaryosu normalden fazla kesinti
+  // üretmezse, senaryo anlattığı şeyi yapmıyor demektir.
+  assert.ok(sayim(simulate("material_shortage")) > sayim(simulate("normal")));
+
+  const starved = explainMaterial(simulate("material_shortage"));
   assert.ok(starved.suggestedCommand, "a reproducible condition may offer a scenario to re-run");
 });
 

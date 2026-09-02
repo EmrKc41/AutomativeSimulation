@@ -2,6 +2,7 @@ import type {
   Defect,
   DefectSeverity,
   InboundTruck,
+  LineConfig,
   Inspection,
   Machine,
   ProductUnit,
@@ -9,7 +10,16 @@ import type {
   StationConfig,
   WorkOrder,
 } from "./domain.ts";
-import { LOCATIONS, lineSideLocation, materialName, stationById, travelTicks } from "./factory.ts";
+import {
+  LOCATIONS,
+  lineById,
+  lineSideLocation,
+  materialName,
+  routeStationIds,
+  stationById,
+  totalDemandPerShift,
+  travelTicks,
+} from "./factory.ts";
 import { computeMetrics, detectBottlenecks, sampleMachines } from "./metrics.ts";
 import {
   availableQuantity,
@@ -97,12 +107,25 @@ function workOrderOf(state: SimulationState, product: ProductUnit): WorkOrder {
   return order;
 }
 
-function activeWip(state: SimulationState): number {
+/** Ürünün üretildiği hat. Rota, tamir hücresi ve hat tavanı buradan geliyor. */
+function lineOf(state: SimulationState, product: ProductUnit): LineConfig {
+  return lineById(state.config, product.lineId);
+}
+
+/**
+ * Hattaki açık araç sayısı (WIP).
+ *
+ * Hat başına sayılıyor: tesiste üç hat var ve birinin dolu olması diğerinin
+ * iş almasını engellemez. Tek sayaç olsaydı en hızlı hat, diğerlerinin
+ * tavanını da yerdi.
+ */
+function activeWip(state: SimulationState, lineId: string): number {
   return state.products.filter(
     (product) =>
-      product.status === "QUEUED" ||
-      product.status === "IN_PRODUCTION" ||
-      product.status === "IN_REWORK",
+      product.lineId === lineId &&
+      (product.status === "QUEUED" ||
+        product.status === "IN_PRODUCTION" ||
+        product.status === "IN_REWORK"),
   ).length;
 }
 
@@ -132,9 +155,14 @@ function applyScenarioEvents(state: SimulationState): void {
       case "DEMAND_SURGE": {
         state.counters.workOrder += 1;
         const id = `WO-SURGE-${String(state.counters.workOrder).padStart(3, "0")}`;
+        // Ek talep ilk hatta düşüyor. Senaryonun anlattığı şey "beklenmedik
+        // sipariş"; hangi hatta gideceği planlamanın kararı ve bu ayrım
+        // senaryoya girmediği sürece tek yerde tutuluyor.
+        const surgeLine = state.config.lines[0]!;
         state.workOrders.push({
           id,
-          productDefinitionId: "SEDAN-A",
+          lineId: surgeLine.id,
+          productDefinitionId: surgeLine.model.toLocaleUpperCase("tr-TR"),
           quantity: scenarioEvent.extraUnits,
           priority: 0,
           dueTick: scenarioEvent.dueTick,
@@ -152,7 +180,9 @@ function applyScenarioEvents(state: SimulationState): void {
         break;
       }
       case "LINE_STOP":
-        for (const stationId of state.config.route) {
+        // Senaryo tesisi durduruyor, tek hattı değil: elektrik kesintisi üç
+        // hattı birden vurur.
+        for (const stationId of routeStationIds(state.config)) {
           forceBreakdown(state, stationId, scenarioEvent.durationTicks, "scenario:line-stop");
         }
         break;
@@ -417,16 +447,22 @@ function receiveBatch(state: SimulationState, truck: InboundTruck): boolean {
 
 /** Release is allowed only when it is planned, material-feasible and within WIP. */
 function releaseWork(state: SimulationState): void {
-  const firstStationId = state.config.route[0];
+  // Her hat kendi tavanına ve kendi iş emirlerine bakıyor. Sıra sabit: hat
+  // sırası değişirse aynı tohum farklı koşu üretirdi.
+  for (const line of state.config.lines) releaseLine(state, line);
+}
+
+function releaseLine(state: SimulationState, line: LineConfig): void {
+  const firstStationId = line.route[0];
   if (firstStationId === undefined) return;
   const firstMachine = findMachine(state, firstStationId);
   const firstStation = stationById(state.config, firstStationId);
 
   while (
-    activeWip(state) < state.config.wipCap &&
+    activeWip(state, line.id) < line.wipCap &&
     firstMachine.queue.length < firstStation.bufferCapacity
   ) {
-    const order = nextWorkOrder(state);
+    const order = nextWorkOrder(state, line);
     if (!order) return;
 
     const missing = infeasibleMaterials(state);
@@ -452,6 +488,7 @@ function releaseWork(state: SimulationState): void {
     const product: ProductUnit = {
       id: `CAR-2026-${String(state.counters.product).padStart(6, "0")}`,
       workOrderId: order.id,
+      lineId: line.id,
       status: "QUEUED",
       stageIndex: 0,
       reworkCount: 0,
@@ -481,7 +518,7 @@ function releaseWork(state: SimulationState): void {
     emit(
       state,
       "PRODUCTION_STARTED",
-      state.config.lineId,
+      line.id,
       product.id,
       { workOrder: order.id, definition: order.productDefinitionId },
       releaseEventId,
@@ -497,15 +534,18 @@ function releaseWork(state: SimulationState): void {
  * offer is ignored rather than trusted — the optimiser may be a remote solver,
  * and a plan is data, not an instruction.
  */
-function nextWorkOrder(state: SimulationState): WorkOrder | null {
-  const open = state.workOrders.filter((order) => order.released < order.quantity);
+function nextWorkOrder(state: SimulationState, line: LineConfig): WorkOrder | null {
+  // Yalnızca bu hattın emirleri: bir hattın planlaması diğerinin işini almaz.
+  const open = state.workOrders.filter(
+    (order) => order.lineId === line.id && order.released < order.quantity,
+  );
   if (open.length === 0) return null;
 
   const chosenId = state.optimizer.nextRelease({
     time: state.time,
-    taktTime: state.config.shiftTicks / state.config.demandPerShift,
-    wip: activeWip(state),
-    wipCap: state.config.wipCap,
+    taktTime: state.config.shiftTicks / line.demandPerShift,
+    wip: activeWip(state, line.id),
+    wipCap: line.wipCap,
     candidates: open.map((order) => ({
       id: order.id,
       priority: order.priority,
@@ -530,7 +570,9 @@ function totalAvailable(state: SimulationState, materialId: string): number {
 /** Materials the route needs for one more unit but cannot currently supply. */
 function infeasibleMaterials(state: SimulationState): string[] {
   const missing: string[] = [];
-  for (const stationId of state.config.route) {
+  // Depo ortak: üç hat da aynı raftan besleniyor, o yüzden eksik malzeme
+  // bütün rotaların ihtiyacına göre belirleniyor.
+  for (const stationId of routeStationIds(state.config)) {
     const station = stationById(state.config, stationId);
     for (const item of station.consumes) {
       if (totalAvailable(state, item.materialId) < item.quantity) missing.push(item.materialId);
@@ -710,7 +752,12 @@ function advanceAgvs(state: SimulationState): void {
  * visible to the upstream station on the next tick — the way a real line feels.
  */
 function advanceStations(state: SimulationState): void {
-  const order = [state.config.reworkStationId, ...[...state.config.route].reverse()];
+  // Her hat kendi içinde aşağıdan yukarı işleniyor. Hatlar arası sıra sabit:
+  // değişirse aynı tohum farklı koşu üretir.
+  const order = state.config.lines.flatMap((line) => [
+    line.reworkStationId,
+    ...[...line.route].reverse(),
+  ]);
   for (const stationId of order) processMachine(state, stationId);
 
   // Second pass: pick up units that arrived after a station had already taken
@@ -778,7 +825,11 @@ function startNextUnit(
 ): void {
   const productId = machine.queue[0];
   if (productId === undefined) {
-    machine.status = activeWip(state) > 0 ? "STARVED" : "IDLE";
+    // "Besleme yok" mu "boşta" mı: makinenin **kendi hattında** açık araç
+    // varsa besleme bekliyordur. Tesis genelinde sayılsaydı, hiç işi olmayan
+    // bir hattın istasyonları komşu hat çalıştığı için "besleme yok"
+    // görünürdü — sorunu yanlış yere gösteren bir etiket.
+    machine.status = activeWip(state, machine.lineId) > 0 ? "STARVED" : "IDLE";
     if (!chargeTick) return;
     if (machine.status === "STARVED") machine.starvedTicks += 1;
     else machine.idleTicks += 1;
@@ -844,7 +895,8 @@ function startNextUnit(
   product.currentMachineId = machine.id;
   product.operationStartedAt = state.time;
   product.remainingTicks = machine.remainingTicks;
-  product.status = station.id === state.config.reworkStationId ? "IN_REWORK" : "IN_PRODUCTION";
+  product.status =
+    station.id === lineOf(state, product).reworkStationId ? "IN_REWORK" : "IN_PRODUCTION";
   emit(state, "MACHINE_STARTED", machine.id, product.id, {
     station: station.name,
     plannedTicks: machine.remainingTicks,
@@ -875,7 +927,7 @@ function completeOperation(state: SimulationState, machine: Machine, station: St
     reworkPass: product.reworkCount,
   });
 
-  if (station.id === state.config.reworkStationId) {
+  if (station.id === lineOf(state, product).reworkStationId) {
     completeRework(state, product);
   } else {
     completeProductionStep(state, product, station);
@@ -892,9 +944,10 @@ function completeRework(state: SimulationState, product: ProductUnit): void {
     defect.resolvedAt = state.time;
   }
   product.status = "QUEUED";
-  emit(state, "REWORK_COMPLETED", state.config.reworkStationId, product.id, {
+  const line = lineOf(state, product);
+  emit(state, "REWORK_COMPLETED", line.reworkStationId, product.id, {
     reworkCount: product.reworkCount,
-    returnsTo: state.config.route[product.stageIndex] ?? "UNKNOWN",
+    returnsTo: line.route[product.stageIndex] ?? "UNKNOWN",
   });
   resolveAlert(state, `quality:${product.id}`);
 }
@@ -906,7 +959,7 @@ function completeProductionStep(
 ): void {
   injectDefect(state, product, station);
   const inspection = station.inspection.enabled ? runInspection(state, product, station) : null;
-  const isFinalStage = product.stageIndex === state.config.route.length - 1;
+  const isFinalStage = product.stageIndex === lineOf(state, product).route.length - 1;
 
   if (inspection !== null && inspection.result === "FAIL") {
     emit(state, "QUALITY_CHECK_FAILED", station.id, product.id, {
@@ -922,7 +975,7 @@ function completeProductionStep(
 
     product.reworkCount += 1;
     product.status = "IN_REWORK";
-    emit(state, "REWORK_STARTED", state.config.reworkStationId, product.id, {
+    emit(state, "REWORK_STARTED", lineOf(state, product).reworkStationId, product.id, {
       pass: product.reworkCount,
       from: station.id,
     });
@@ -954,7 +1007,7 @@ function completeProductionStep(
   product.completedAt = state.time;
   const order = workOrderOf(state, product);
   order.completed += 1;
-  emit(state, "PRODUCT_COMPLETED", state.config.lineId, product.id, {
+  emit(state, "PRODUCT_COMPLETED", product.lineId, product.id, {
     workOrder: order.id,
     leadTimeTicks: state.time - (product.releasedAt ?? state.time),
     reworkCount: product.reworkCount,
@@ -1136,8 +1189,12 @@ function tryHandoff(state: SimulationState, machine: Machine): boolean {
       accepted = true;
       break;
     case "IN_REWORK": {
-      const rework = findMachine(state, state.config.reworkStationId);
-      const reworkStation = stationById(state.config, state.config.reworkStationId);
+      // Araç kendi hattının tamir hücresine gidiyor. Tek hücre olsaydı üç
+      // hattın tamiri aynı kuyruğa düşer ve bir hattın kalite sorunu
+      // diğerlerinin akışını tıkardı.
+      const reworkId = lineOf(state, product).reworkStationId;
+      const rework = findMachine(state, reworkId);
+      const reworkStation = stationById(state.config, reworkId);
       if (rework.queue.length < reworkStation.bufferCapacity) {
         rework.queue.push(productId);
         accepted = true;
@@ -1145,7 +1202,7 @@ function tryHandoff(state: SimulationState, machine: Machine): boolean {
       break;
     }
     case "QUEUED": {
-      const nextId = state.config.route[product.stageIndex];
+      const nextId = lineOf(state, product).route[product.stageIndex];
       if (nextId === undefined) {
         accepted = true;
         break;
@@ -1207,7 +1264,9 @@ function updateLogistics(state: SimulationState): void {
         // late the moment it opened, which tells an operator nothing.
         plannedDeparture:
           state.time +
-          Math.round(plan.capacity * (state.config.shiftTicks / state.config.demandPerShift)) +
+          Math.round(
+            plan.capacity * (state.config.shiftTicks / totalDemandPerShift(state.config)),
+          ) +
           plan.loadingTicks,
         actualDeparture: null,
         deliveredAt: null,
@@ -1293,7 +1352,9 @@ function reviewSchedule(state: SimulationState): void {
     }
     const remaining = order.quantity - order.completed - order.scrapped;
     const ticksLeft = order.dueTick - state.time;
-    const taktTime = state.config.shiftTicks / state.config.demandPerShift;
+    // Emrin kendi hattının taktı: hatlar farklı talep taşıyabilir ve tesis
+    // ortalaması, yavaş bir hattın riskini gizlerdi.
+    const taktTime = state.config.shiftTicks / lineById(state.config, order.lineId).demandPerShift;
     if (ticksLeft <= 0 || remaining * taktTime > ticksLeft) {
       raiseAlert(
         state,

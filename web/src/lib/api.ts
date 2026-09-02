@@ -33,15 +33,29 @@ export interface ScenarioDescriptor {
 }
 
 export interface FactoryDescriptor {
-  readonly line: {
+  /**
+   * Tesisteki üretim hatları.
+   *
+   * Tek hat varsayımı buradaydı ve sahne, pano, rapor — hepsi ona dayanıyordu.
+   * Artık dizi: her hattın kendi rotası, kendi tamir hücresi ve kendi modeli
+   * var.
+   */
+  readonly lines: readonly {
     readonly id: string;
+    /** Bu hattın ürettiği model. */
+    readonly model: string;
     readonly route: readonly string[];
     readonly reworkStationId: string;
     readonly wipCap: number;
-    readonly maxReworkPasses: number;
+    readonly demandPerShift: number;
     readonly taktTime: number;
+  }[];
+  /** Hatlara değil tesise ait olan ayarlar. */
+  readonly plant: {
+    readonly maxReworkPasses: number;
     readonly shiftTicks: number;
     readonly demandPerShift: number;
+    readonly taktTime: number;
   };
   readonly stations: readonly StationConfig[];
   readonly materials: readonly MaterialConfig[];

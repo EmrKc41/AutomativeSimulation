@@ -1,5 +1,5 @@
 import type { FactoryMetrics, Machine, MachineMetric, ProductUnit } from "./domain.ts";
-import { stationById } from "./factory.ts";
+import { isReworkStation, routeStationIds, stationById, totalDemandPerShift } from "./factory.ts";
 import { emit, raiseAlert, resolveAlert, type SimulationState } from "./state.ts";
 
 /**
@@ -80,8 +80,10 @@ const BOTTLENECK_UTILIZATION = 0.75;
  * with a backlog is a constraint by definition, whatever its utilisation.
  */
 export function detectBottlenecks(state: SimulationState): void {
+  // Tamir hücreleri hattı tutan yer olamaz: rotanın dışındalar, akışı onlar
+  // belirlemiyor.
   const routeMachines = state.machines.filter(
-    (machine) => machine.id !== state.config.reworkStationId,
+    (machine) => !isReworkStation(state.config, machine.id),
   );
   const busiest = routeMachines.reduce<Machine | null>(
     (leader, machine) =>
@@ -108,7 +110,7 @@ export function detectBottlenecks(state: SimulationState): void {
 
     if (isBottleneck && !machine.bottleneck) {
       machine.bottleneck = true;
-      emit(state, "BOTTLENECK_DETECTED", state.config.lineId, machine.id, {
+      emit(state, "BOTTLENECK_DETECTED", machine.lineId, machine.id, {
         utilization: Number(utilization.toFixed(3)),
         queueLength: machine.queue.length,
         queueGrowing: growing,
@@ -124,7 +126,7 @@ export function detectBottlenecks(state: SimulationState): void {
       );
     } else if (!isBottleneck && machine.bottleneck) {
       machine.bottleneck = false;
-      emit(state, "BOTTLENECK_CLEARED", state.config.lineId, machine.id, {
+      emit(state, "BOTTLENECK_CLEARED", machine.lineId, machine.id, {
         utilization: Number(utilization.toFixed(3)),
       });
       resolveAlert(state, key);
@@ -138,7 +140,7 @@ function isFinished(product: ProductUnit): boolean {
 
 export function computeMetrics(state: SimulationState): FactoryMetrics {
   const elapsed = Math.max(1, state.time);
-  const routeIds = new Set(state.config.route);
+  const routeIds = routeStationIds(state.config);
   const routeMachines = state.machines.filter((machine) => routeIds.has(machine.id));
 
   const completed = state.products.filter(isFinished);
@@ -152,8 +154,11 @@ export function computeMetrics(state: SimulationState): FactoryMetrics {
 
   // Performance compares actual output against what the line's slowest station
   // could have produced in the time it was actually available.
+  // Tesisin en yavaş operasyonu. Üç hat da aynı rotayı taşıdığı için bu değer
+  // hatlar arasında aynı; farklı olsaydı en yavaşı belirleyici olurdu, çünkü
+  // tesis çıktısı en yavaş hattın hızını aşamaz.
   const idealLineCycle = Math.max(
-    ...state.config.route.map((id) => stationById(state.config, id).cycleTicks),
+    ...[...routeIds].map((id) => stationById(state.config, id).cycleTicks),
   );
   const lineRunTime = Math.max(1, elapsed * availability);
   const performance = Math.min(1, safeDivide(idealLineCycle * unitsOut, lineRunTime));
@@ -166,7 +171,7 @@ export function computeMetrics(state: SimulationState): FactoryMetrics {
     return product !== undefined && isFinished(product);
   }).length;
 
-  const taktTime = safeDivide(state.config.shiftTicks, state.config.demandPerShift);
+  const taktTime = safeDivide(state.config.shiftTicks, totalDemandPerShift(state.config));
   const expectedByNow =
     taktTime === 0
       ? 0

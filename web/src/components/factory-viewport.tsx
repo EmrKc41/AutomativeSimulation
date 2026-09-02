@@ -76,7 +76,7 @@ export function FactoryViewport({
     <section aria-label="3B fabrika görünümü" className="bg-card overflow-hidden rounded-lg border">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b px-3 py-2">
         <h2 className="font-heading text-xs font-semibold tracking-widest uppercase">
-          Fabrika — {config.line.id}
+          Fabrika — {config.lines.length} hat
         </h2>
 
         <div className="flex items-center gap-1.5">

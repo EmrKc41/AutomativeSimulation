@@ -34,22 +34,67 @@ export function LineFlow({
   const byId = new Map(frame.machines.map((machine) => [machine.id, machine]));
   const stationById = new Map(config.stations.map((station) => [station.id, station]));
   const productById = new Map(frame.activeProducts.map((product) => [product.id, product]));
-  const rework = byId.get(config.line.reworkStationId);
-  const reworkStation = stationById.get(config.line.reworkStationId);
+
+  // Tesiste birden fazla hat var; her biri kendi akışını, kendi tamir
+  // hücresini ve kendi modelini gösteriyor. Tek blok hâlinde birleştirmek,
+  // farklı modelleri aynı hatta üretiliyormuş gibi gösterirdi.
+  return (
+    <div className="grid gap-2">
+      {config.lines.map((line) => (
+        <LineRow
+          key={line.id}
+          line={line}
+          maxReworkPasses={config.plant.maxReworkPasses}
+          byId={byId}
+          stationById={stationById}
+          productById={productById}
+          onSelectStation={onSelectStation}
+          onSelectProduct={onSelectProduct}
+          selectedStation={selectedStation}
+        />
+      ))}
+    </div>
+  );
+}
+
+function LineRow({
+  line,
+  maxReworkPasses,
+  byId,
+  stationById,
+  productById,
+  onSelectStation,
+  onSelectProduct,
+  selectedStation,
+}: {
+  line: FactoryDescriptor["lines"][number];
+  maxReworkPasses: number;
+  byId: Map<string, FactoryFrame["machines"][number]>;
+  stationById: Map<string, FactoryDescriptor["stations"][number]>;
+  productById: Map<string, FactoryFrame["activeProducts"][number]>;
+  onSelectStation: (machineId: string) => void;
+  onSelectProduct: (productId: string) => void;
+  selectedStation: string | null;
+}) {
+  const rework = byId.get(line.reworkStationId);
+  const reworkStation = stationById.get(line.reworkStationId);
 
   return (
-    <section aria-label="Üretim hattı" className="bg-card rounded-lg border p-3">
-      <div className="mb-2 flex items-baseline justify-between">
+    <section aria-label={`Üretim hattı ${line.id}`} className="bg-card rounded-lg border p-3">
+      <div className="mb-2 flex items-baseline justify-between gap-2">
         <h2 className="font-heading text-xs font-semibold tracking-widest uppercase">
-          Hat Akışı — {config.line.id}
+          Hat Akışı — {line.id}
         </h2>
         <p className="text-muted-foreground text-[11px]">
-          Hat tavanı {config.line.wipCap} araç · {config.line.route.length} operasyon
+          {/* Modelin adı başlıkta: üç hat aynı görünüyor, üzerlerinden geçen
+              araç farklı. */}
+          <span className="text-foreground font-medium">{line.model}</span> · hat tavanı{" "}
+          {line.wipCap} araç · {line.route.length} operasyon
         </p>
       </div>
 
       <div className="flex items-stretch gap-1 overflow-x-auto pb-1">
-        {config.line.route.map((stationId, index) => {
+        {line.route.map((stationId, index) => {
           const machine = byId.get(stationId);
           const station = stationById.get(stationId);
           if (!machine || !station) return null;
@@ -71,7 +116,7 @@ export function LineFlow({
                 onSelect={() => onSelectStation(stationId)}
                 onSelectProduct={onSelectProduct}
               />
-              {index < config.line.route.length - 1 ? (
+              {index < line.route.length - 1 ? (
                 <ChevronRight
                   aria-hidden
                   className="text-muted-foreground/50 my-auto size-4 shrink-0"
@@ -103,8 +148,8 @@ export function LineFlow({
             onSelectProduct={onSelectProduct}
           />
           <p className="text-muted-foreground ml-2 text-[11px]">
-            Araç, kendisini reddeden istasyona geri döner; {config.line.maxReworkPasses} turdan
-            sonra hurdaya ayrılır.
+            Araç, kendisini reddeden istasyona geri döner; {maxReworkPasses} turdan sonra hurdaya
+            ayrılır.
           </p>
         </div>
       ) : null}

@@ -19,7 +19,7 @@ import type {
   WorkOrder,
 } from "./domain.ts";
 import { EventStore } from "./events.ts";
-import { LOCATIONS, factoryConfig, lineSideLocation } from "./factory.ts";
+import { LOCATIONS, factoryConfig, lineSideLocation, totalDemandPerShift } from "./factory.ts";
 import { Rng } from "./rng.ts";
 import { SlackAwareOptimizer, type Optimizer } from "./optimizer.ts";
 import { SimulatedInspector, type Inspector } from "./vision/inspector.ts";
@@ -349,6 +349,7 @@ export function createSimulation(options: SimulationOptions): SimulationState {
 
   const workOrders: WorkOrder[] = config.workOrders.map((order) => ({
     id: order.id,
+    lineId: order.lineId,
     productDefinitionId: order.productDefinitionId,
     quantity: order.quantity,
     priority: order.priority,
@@ -389,7 +390,7 @@ export function createSimulation(options: SimulationOptions): SimulationState {
     metrics: {
       ...emptyMetrics,
       plannedProduction: totalPlanned(workOrders),
-      taktTime: config.shiftTicks / config.demandPerShift,
+      taktTime: config.shiftTicks / totalDemandPerShift(config),
       machines: machines.map((machine) => ({
         machineId: machine.id,
         station: machine.station,

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { run, tick } from "./engine.ts";
-import { factoryConfig } from "./factory.ts";
+import { factoryConfig, isReworkStation, routeStationIds, totalDemandPerShift } from "./factory.ts";
 import { computeMetrics, windowedUtilization } from "./metrics.ts";
 import { scenarios } from "./scenarios.ts";
 import { createSimulation } from "./state.ts";
@@ -47,7 +47,9 @@ test("takt time comes from demand, cycle time from observed output", () => {
   const simulation = run(state(), 240);
   const metrics = computeMetrics(simulation);
 
-  assert.equal(metrics.taktTime, factoryConfig.shiftTicks / factoryConfig.demandPerShift);
+  // Takt tesisin tamamına ait: üç hattın talebi toplanıyor, çünkü müşteriye
+  // giden araç sayısı da toplam.
+  assert.equal(metrics.taktTime, factoryConfig.shiftTicks / totalDemandPerShift(factoryConfig));
   assert.ok(Math.abs(metrics.throughput - 1 / metrics.cycleTime) < 1e-9);
   assert.ok(metrics.cycleTime > 0);
 });
@@ -55,9 +57,8 @@ test("takt time comes from demand, cycle time from observed output", () => {
 test("downtime, MTBF and MTTR agree with the machine records", () => {
   const simulation = run(state("machine_failure"), 240);
   const metrics = computeMetrics(simulation);
-  const routeMachines = simulation.machines.filter((machine) =>
-    factoryConfig.route.includes(machine.id),
-  );
+  const routeIds = routeStationIds(factoryConfig);
+  const routeMachines = simulation.machines.filter((machine) => routeIds.has(machine.id));
 
   const downtime = routeMachines.reduce((total, machine) => total + machine.downtimeTicks, 0);
   const failures = routeMachines.reduce((total, machine) => total + machine.failureCount, 0);
@@ -73,14 +74,15 @@ test("a reported bottleneck is a real route station, and utilisation alone is no
   const metrics = computeMetrics(simulation);
 
   assert.ok(metrics.bottleneck !== null, "a saturated line must name its constraint");
-  assert.ok(factoryConfig.route.includes(metrics.bottleneck));
+  assert.ok(routeStationIds(factoryConfig).has(metrics.bottleneck));
 
   // The constraint must be the line's busiest resource over the analysis
   // window, not merely a station that happens to be busy right now.
   const flagged = simulation.machines.find((machine) => machine.id === metrics.bottleneck);
   assert.ok(flagged);
   for (const machine of simulation.machines) {
-    if (machine.id === factoryConfig.reworkStationId) continue;
+    // Tamir hücreleri rotanın dışında; hattı tutan yer olamazlar.
+    if (isReworkStation(factoryConfig, machine.id)) continue;
     assert.ok(windowedUtilization(machine) <= windowedUtilization(flagged) + 1e-9);
   }
 });

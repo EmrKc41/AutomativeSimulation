@@ -33,7 +33,10 @@ export function StationBoard({
   onSelectStation: (machineId: string) => void;
   selectedStation: string | null;
 }) {
-  const order = [...config.line.route, config.line.reworkStationId];
+  // Hat hat sıralı: önce hattın rotası, sonra o hattın tamir hücresi. Bütün
+  // istasyonları tek listede karıştırmak, hangi presin hangi hatta olduğunu
+  // okunmaz hâle getirirdi.
+  const order = config.lines.flatMap((line) => [...line.route, line.reworkStationId]);
   const rows = order
     .map((id) => frame.metrics.machines.find((machine) => machine.machineId === id))
     .filter((machine): machine is NonNullable<typeof machine> => machine !== undefined);
