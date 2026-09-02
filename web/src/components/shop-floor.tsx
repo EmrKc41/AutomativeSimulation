@@ -91,24 +91,28 @@ export function ShopFloor() {
           <span className="tabular text-sm font-semibold">{plantClock(frame.simulatedTime)}</span>
         </div>
 
-        <div className="ml-auto flex items-center gap-3">
-          <ToggleGroup
-            value={[bookmark]}
-            onValueChange={(value) => setBookmark(value[0] ?? bookmark)}
-            aria-label="Kamera açısı"
-            className="gap-1"
-          >
-            {bookmarks.map((view) => (
-              <ToggleGroupItem key={view.id} value={view.id} className="px-2.5 text-xs">
-                {view.label}
-              </ToggleGroupItem>
-            ))}
-          </ToggleGroup>
+        <div className="ml-auto flex w-full items-center gap-3 sm:w-auto">
+          {/* The bookmark row is wider than a phone screen. Give it its own
+              scroller, otherwise the last views are clipped out of reach. */}
+          <div className="min-w-0 flex-1 overflow-x-auto sm:flex-none">
+            <ToggleGroup
+              value={[bookmark]}
+              onValueChange={(value) => setBookmark(value[0] ?? bookmark)}
+              aria-label="Kamera açısı"
+              className="gap-1"
+            >
+              {bookmarks.map((view) => (
+                <ToggleGroupItem key={view.id} value={view.id} className="px-2.5 text-xs">
+                  {view.label}
+                </ToggleGroupItem>
+              ))}
+            </ToggleGroup>
+          </div>
 
           <Button
             variant={showLabels ? "secondary" : "ghost"}
             size="sm"
-            className="gap-1.5"
+            className="shrink-0 gap-1.5"
             onClick={() => setShowLabels((current) => !current)}
             aria-pressed={showLabels}
           >

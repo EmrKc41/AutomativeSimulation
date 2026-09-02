@@ -1,7 +1,7 @@
 "use client";
 
-import { CameraControls, Grid, Html } from "@react-three/drei";
-import { Canvas, useFrame } from "@react-three/fiber";
+import { CameraControls, Grid, Html, PerspectiveCamera } from "@react-three/drei";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Suspense, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { Group, Mesh, MeshBasicMaterial } from "three";
 
@@ -51,6 +51,40 @@ export interface FactorySceneProps {
   readonly selectedStation: string | null;
 }
 
+/** Vertical field of view the hall is composed for, at a landscape viewport. */
+const BASE_FOV = 40;
+
+/** Aspect that framing assumes — a desktop canvas, wider than it is tall. */
+const BASE_ASPECT = 16 / 9;
+
+/** Past this the hall reads as a fish-eye, so stop widening and let it crop. */
+const MAX_FOV = 72;
+
+/** Where the hall is viewed from. Module scope keeps the identity stable, so
+ *  the declarative camera below does not reset the rig on every render. */
+const CAMERA_POSITION: [number, number, number] = [0, 24, 30];
+
+/**
+ * A perspective camera fixes the *vertical* field of view, so a portrait phone
+ * sees a much narrower slice of the hall than a desktop does and the line runs
+ * off both edges. Widening the fov as the viewport narrows keeps the horizontal
+ * framing the scene was composed for. Landscape viewports are left alone: the
+ * fov never drops below the composed value.
+ */
+function ResponsiveCamera() {
+  const width = useThree((state) => state.size.width);
+  const height = useThree((state) => state.size.height);
+
+  const fov = useMemo(() => {
+    if (height === 0) return BASE_FOV;
+    const halfBase = ((BASE_FOV / 2) * Math.PI) / 180;
+    const widened = 2 * Math.atan((Math.tan(halfBase) * BASE_ASPECT) / (width / height));
+    return Math.min(MAX_FOV, Math.max(BASE_FOV, (widened * 180) / Math.PI));
+  }, [width, height]);
+
+  return <PerspectiveCamera makeDefault fov={fov} position={CAMERA_POSITION} near={0.1} far={400} />;
+}
+
 export function FactoryScene(props: FactorySceneProps) {
   const reducedMotion = usePrefersReducedMotion();
 
@@ -61,10 +95,10 @@ export function FactoryScene(props: FactorySceneProps) {
       // would double the cost for a difference nobody would name.
       shadows
       dpr={[1, 1.75]}
-      camera={{ position: [0, 24, 30], fov: 40, near: 0.1, far: 400 }}
       // A dark hall: the scene must sit on the same ground as the rest of the UI.
       onCreated={({ gl }) => gl.setClearColor("#14121f")}
     >
+      <ResponsiveCamera />
       <fog attach="fog" args={["#14121f", 55, 140]} />
       <ambientLight intensity={0.42} />
       <hemisphereLight args={["#9db2d4", "#0d0b16", 0.55]} />

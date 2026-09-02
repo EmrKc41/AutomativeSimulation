@@ -15,7 +15,7 @@ import { StationBoard } from "@/components/station-board";
 import { StationDetail } from "@/components/station-detail";
 import { TraceSheet } from "@/components/trace-sheet";
 import { WorkOrders } from "@/components/work-orders";
-import { API_BASE, fetchConfig, sendCommand, type FactoryDescriptor } from "@/lib/api";
+import { apiBase, fetchConfig, sendCommand, type FactoryDescriptor } from "@/lib/api";
 import type { Command } from "@/lib/contract";
 import { useFactoryStream } from "@/lib/use-factory";
 
@@ -184,7 +184,7 @@ function Disconnected({ message }: { message: string | null }) {
         npm run server
       </pre>
       <p className="text-muted-foreground mt-1 text-[11px]">
-        Beklenen adres: <span className="tabular">{API_BASE}</span>
+        Beklenen adres: <span className="tabular">{apiBase()}</span>
         {message ? ` · ${message}` : ""}
       </p>
     </div>

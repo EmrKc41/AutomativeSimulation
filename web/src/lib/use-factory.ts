@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { WS_URL } from "@/lib/api";
+import { wsUrl } from "@/lib/api";
 import type { FactoryEvent, FactoryFrame } from "@/lib/contract";
 
 export type ConnectionState = "connecting" | "live" | "reconnecting" | "offline";
@@ -154,7 +154,7 @@ export function useFactoryStream(): FactoryStream {
 
   useEffect(() => {
     let disposed = false;
-    const socket = new WebSocket(WS_URL);
+    const socket = new WebSocket(wsUrl());
     socketRef.current = socket;
 
     socket.onopen = () => {
