@@ -104,9 +104,36 @@ def birlestir(parcalar, ad):
     return birlesik
 
 
-def disa_aktar(ad, klasor):
-    """Modifier'ları uygula ve GLB yaz."""
+def disa_aktar(ad, klasor, olcek=1.0):
+    """
+    Modifier'ları uygula, gerçek boyuta ölçekle ve GLB yaz.
+
+    `olcek`, varlığın **gerçek dünyadaki boyutuna** çıkarılması için. Makineler
+    tezgâh boyutunda modellenmişti: pres 2,6 m, boyahane 4,4 m. Gerçek bir
+    otomotiv hattında pres 6 metreyi, boya kabini 9 metreyi aşar. Sahne plan
+    birimlerini metre kabul ettiği için (istasyonlar 20 m arayla), küçük
+    modeller ya devasa bir ölçek çarpanıyla büyütülmek zorunda kalıyordu — ki
+    o zaman tır 48 metre oluyordu — ya da fabrika bomboş görünüyordu.
+
+    Çözüm ölçek çarpanı değil, doğru boyut: her varlık kendi gerçek ölçüsünde.
+    Zaten gerçek boyutta olanlar (tır, bina, araç, operatör, robot) 1,0.
+    """
     bpy.ops.object.select_all(action="SELECT")
+    if olcek != 1.0:
+        # Ölçek **çarpılıyor**, atanmıyor.
+        #
+        # `kutu()` parçanın boyutunu nesne ölçeğinde tutuyor ve `birlestir()`
+        # bunu birleşik nesneye taşıyor. Üzerine yazmak, her parçanın kendi
+        # boyutunu silip modeli tek bir küpe çeviriyor — denendi, sahnede
+        # fabrikayı boydan boya kesen bir dikme çıktı.
+        #
+        # Konum da aynı çarpanla: ölçek her nesneyi kendi orijini etrafında
+        # büyütür, montaj bir arada kalsın diye yerleri de birlikte açılmalı.
+        for nesne in bpy.context.selected_objects:
+            nesne.scale = tuple(bilesen * olcek for bilesen in nesne.scale)
+            nesne.location = tuple(bilesen * olcek for bilesen in nesne.location)
+        bpy.ops.object.transform_apply(location=True, rotation=False, scale=True)
+
     for nesne in bpy.context.selected_objects:
         bpy.context.view_layer.objects.active = nesne
         for mod in list(nesne.modifiers):
@@ -202,7 +229,7 @@ def tir(klasor):
             parcalar.append(tekerlek)
 
     birlestir(parcalar, "Tir")
-    disa_aktar("tir", klasor)
+    disa_aktar("tir", klasor, 1.45)
 
 
 def palet(klasor):
@@ -488,7 +515,7 @@ def pres(klasor):
         parcalar.append(ray)
 
     birlestir(parcalar, "Pres")
-    disa_aktar("pres", klasor)
+    disa_aktar("pres", klasor, 2.4)
 
 
 def pres_koc(klasor):
@@ -496,7 +523,7 @@ def pres_koc(klasor):
     temizle()
     koc = kutu("koc", (2.0, 1.9, 0.5), konum=(0, 0, 0))
     malzeme(pah(koc, 0.05), "pres-koc", (0.34, 0.37, 0.44), metal=0.7, puruz=0.3)
-    disa_aktar("pres-koc", klasor)
+    disa_aktar("pres-koc", klasor, 2.4)
 
 
 def boyahane(klasor):
@@ -548,7 +575,7 @@ def boyahane(klasor):
     parcalar.append(boru)
 
     birlestir(parcalar, "Boyahane")
-    disa_aktar("boyahane", klasor)
+    disa_aktar("boyahane", klasor, 2.0)
 
 
 def montaj_koprusu(klasor):
@@ -579,7 +606,7 @@ def montaj_koprusu(klasor):
     parcalar.append(kanca)
 
     birlestir(parcalar, "MontajKoprusu")
-    disa_aktar("montaj", klasor)
+    disa_aktar("montaj", klasor, 1.5)
 
 
 def kalite_kapisi(klasor):
@@ -609,7 +636,7 @@ def kalite_kapisi(klasor):
         parcalar.append(kafa)
 
     birlestir(parcalar, "KaliteKapisi")
-    disa_aktar("kalite", klasor)
+    disa_aktar("kalite", klasor, 1.3)
 
 
 def tamir_hucresi(klasor):
@@ -641,7 +668,7 @@ def tamir_hucresi(klasor):
     parcalar.append(panel)
 
     birlestir(parcalar, "TamirHucresi")
-    disa_aktar("tamir", klasor)
+    disa_aktar("tamir", klasor, 2.0)
 
 
 def konveyor(klasor):
@@ -678,7 +705,7 @@ def konveyor(klasor):
             parcalar.append(ayak)
 
     birlestir(parcalar, "Konveyor")
-    disa_aktar("konveyor", klasor)
+    disa_aktar("konveyor", klasor, 1.25)
 
 
 def raf(klasor):
@@ -827,7 +854,7 @@ def kalite_masasi(klasor):
     parcalar.append(raf_)
 
     birlestir(parcalar, "KaliteMasasi")
-    disa_aktar("iqc-masa", klasor)
+    disa_aktar("iqc-masa", klasor, 1.15)
 
 
 def doli(klasor):

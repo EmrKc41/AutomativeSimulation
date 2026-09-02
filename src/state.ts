@@ -38,6 +38,13 @@ export interface SimulationState {
   readonly scenario: ScenarioDefinition;
   readonly rng: Rng;
   /**
+   * Bir kez üretilmiş olay anahtarları.
+   *
+   * "Çıkış kapısında bekliyor" gibi bir durum her tikte tekrar edilirse olay
+   * akışı aynı satırla dolar ve gerçekten yeni olan şey görünmez olur.
+   */
+  readonly emittedOnce: Set<string>;
+  /**
    * Whatever is looking at the units.
    *
    * The engine never decides how a defect is found — it asks this. Swapping in
@@ -362,12 +369,14 @@ export function createSimulation(options: SimulationOptions): SimulationState {
   }));
 
   const rng = new Rng(options.seed);
+  const emittedOnce = new Set<string>();
   const state: SimulationState = {
     time: 0,
     seed: options.seed,
     config,
     scenario: options.scenario,
     rng,
+    emittedOnce,
     inspector: (options.inspector ?? ((stream) => new SimulatedInspector(stream)))(rng),
     optimizer: options.optimizer ?? new SlackAwareOptimizer(),
     machines,

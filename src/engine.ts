@@ -17,7 +17,6 @@ import {
   materialName,
   routeStationIds,
   stationById,
-  totalDemandPerShift,
   travelTicks,
 } from "./factory.ts";
 import { computeMetrics, detectBottlenecks, sampleMachines } from "./metrics.ts";
@@ -1240,19 +1239,47 @@ function tryHandoff(state: SimulationState, machine: Machine): boolean {
 // Phase 7 — shipment
 // ---------------------------------------------------------------------------
 
+/**
+ * Çıkış yolunun bir taşıyıcı için boşalma süresi.
+ *
+ * Taşıyıcı rampadan kapıya kadar bu kadar dakika yolda; o sürede ikinci bir
+ * taşıyıcı yola çıkmıyor.
+ */
+const EXIT_ROAD_TICKS = 3;
+
+/** Çıkış yolunda o an başka bir taşıyıcı var mı? */
+function cikisYoluBos(state: SimulationState): boolean {
+  return !state.shipments.some(
+    (shipment) =>
+      shipment.actualDeparture !== null && state.time - shipment.actualDeparture < EXIT_ROAD_TICKS,
+  );
+}
+
+/** Aynı olayı her tikte tekrar üretmemek için: anahtar başına bir kez. */
+function emitOnce(state: SimulationState, key: string, üret: () => void): void {
+  if (state.emittedOnce.has(key)) return;
+  state.emittedOnce.add(key);
+  üret();
+}
+
 function updateLogistics(state: SimulationState): void {
   const plan = state.config.shipmentPlan;
 
   for (const product of state.products) {
     if (product.status !== "READY_TO_SHIP" || product.shipmentId !== null) continue;
+    // Taşıyıcı **kendi hattının** araçlarını topluyor.
     let shipment = state.shipments.find(
       (candidate) =>
-        candidate.status === "PLANNED" && candidate.productIds.length < candidate.capacity,
+        candidate.lineId === product.lineId &&
+        candidate.status === "PLANNED" &&
+        candidate.productIds.length < candidate.capacity,
     );
     if (!shipment) {
       state.counters.shipment += 1;
+      const line = lineById(state.config, product.lineId);
       shipment = {
         id: `SHP-2026-${String(state.counters.shipment).padStart(4, "0")}`,
+        lineId: line.id,
         customer: plan.customer,
         destination: plan.destination,
         vehicle: plan.vehicle,
@@ -1262,11 +1289,11 @@ function updateLogistics(state: SimulationState): void {
         // The plan is when a carrier *should* leave: long enough to fill at
         // takt, plus loading. Dating it from "now" would mark every shipment
         // late the moment it opened, which tells an operator nothing.
+        // Taşıyıcı tek hattan doluyor, o yüzden **o hattın** taktıyla:
+        // tesis ortalaması, bir hattın kendi hızını gizlerdi.
         plannedDeparture:
           state.time +
-          Math.round(
-            plan.capacity * (state.config.shiftTicks / totalDemandPerShift(state.config)),
-          ) +
+          Math.round(plan.capacity * (state.config.shiftTicks / line.demandPerShift)) +
           plan.loadingTicks,
         actualDeparture: null,
         deliveredAt: null,
@@ -1274,6 +1301,7 @@ function updateLogistics(state: SimulationState): void {
       };
       state.shipments.push(shipment);
       emit(state, "SHIPMENT_CREATED", "shipping", shipment.id, {
+        line: shipment.lineId,
         customer: shipment.customer,
         destination: shipment.destination,
         capacity: shipment.capacity,
@@ -1295,8 +1323,24 @@ function updateLogistics(state: SimulationState): void {
         });
         break;
       case "LOADING":
-        shipment.ticksRemaining -= 1;
+        if (shipment.ticksRemaining > 0) shipment.ticksRemaining -= 1;
         if (shipment.ticksRemaining > 0) break;
+        // Çıkış yolu tek ve paylaşılan: aynı anda bir taşıyıcı geçer.
+        //
+        // Üç hattın taşıyıcısı aynı takta dolduğu için yüklemeleri de aynı
+        // dakikaya denk geliyordu; üçü birden kapıya yürüseydi sahnede iç içe
+        // geçerlerdi. Bekleyen taşıyıcı rampada kalıyor, sırası gelince
+        // çıkıyor — kapının önünde kuyruk olması uydurma değil, tek kapılı bir
+        // tesisin gerçeği.
+        if (!cikisYoluBos(state)) {
+          emitOnce(state, `exit-queue:${shipment.id}`, () =>
+            emit(state, "SHIPMENT_LOADING", LOCATIONS.shipping, shipment.id, {
+              line: shipment.lineId,
+              waitingFor: "çıkış kapısı",
+            }),
+          );
+          break;
+        }
         shipment.status = "DISPATCHED";
         shipment.actualDeparture = state.time;
         shipment.ticksRemaining = plan.transitTicks;

@@ -138,6 +138,18 @@ function agvPath(from: World, to: World, koridor: number): readonly World[] {
  * hızlanmıyor. Sıfır uzunluklu parçalar atlanıyor: duraklar zaten koridorda
  * olduğunda yol iki noktaya iniyor ve bölme sıfıra düşerdi.
  */
+/**
+ * İki nokta arasındaki yönün, **+X'e bakan** bir model için Y dönüşü.
+ *
+ * Modellerin hepsi +X'e bakıyor (tır, oto taşıyıcı, doli, forklift). Burada
+ * uzun süre `atan2(dx, dz)` vardı; o, +Z'ye bakan bir model için doğru. Yani
+ * doli arabaları gittikleri yöne dik duruyordu — tırda düzeltilen hatanın
+ * aynısı, fark edilmemiş hâli.
+ */
+function yon(from: World, to: World): number {
+  return Math.atan2(-(to[2] - from[2]), to[0] - from[0]);
+}
+
 function alongPath(points: readonly World[], t: number): { position: World; heading: number } {
   const legs: { from: World; to: World; length: number }[] = [];
   let total = 0;
@@ -166,14 +178,14 @@ function alongPath(points: readonly World[], t: number): { position: World; head
         leg.from[1],
         leg.from[2] + (leg.to[2] - leg.from[2]) * oran,
       ],
-      heading: Math.atan2(leg.to[0] - leg.from[0], leg.to[2] - leg.from[2]),
+      heading: yon(leg.from, leg.to),
     };
   }
 
   const son = legs[legs.length - 1]!;
   return {
     position: son.to,
-    heading: Math.atan2(son.to[0] - son.from[0], son.to[2] - son.from[2]),
+    heading: yon(son.from, son.to),
   };
 }
 
@@ -321,8 +333,8 @@ export function overviewExtent(config: FactoryDescriptor): readonly World[] {
   }
   // Tırın yolu: güvenlik kapısı, dönüş köşesi ve rampa.
   points.push(gateWorld(config), turnWorld(config), dockWorld(config));
-  // Çıkış yolu: sevkiyat sahası, çıkış kapısı ve dışarısı.
-  points.push(...carrierRoute(config), exitGatePlacement(config));
+  // Çıkış yolları: üç şerit, ortak yol ve kapı.
+  points.push(...carrierRoutes(config).flat(), exitGatePlacement(config));
   return points;
 }
 
@@ -397,15 +409,19 @@ function receivingView(config: FactoryDescriptor): { position: World; target: Wo
  * yükleme + çıkış yolu + kapının tamamı.
  */
 function shippingView(config: FactoryDescriptor): { position: World; target: World } {
-  const [yard, exit] = carrierRoute(config);
-  if (!yard || !exit) return { position: [0, 10, 20], target: [0, 0, 0] };
+  // Kapsanacak her şey: üç şerit, ortak yol ve kapı.
+  const noktalar = [...carrierRoutes(config).flat(), exitGatePlacement(config)];
+  if (noktalar.length === 0) return { position: [0, 10, 20], target: [0, 0, 0] };
 
-  const centreX = (yard[0] + exit[0]) / 2;
-  const yayilim = Math.abs(exit[0] - yard[0]);
+  const xs = noktalar.map((nokta) => nokta[0]);
+  const zs = noktalar.map((nokta) => nokta[2]);
+  const centreX = (Math.min(...xs) + Math.max(...xs)) / 2;
+  const centreZ = (Math.min(...zs) + Math.max(...zs)) / 2;
+  const yayilim = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...zs) - Math.min(...zs));
 
   return {
-    position: [centreX + yayilim * 0.3, yayilim * 0.8, yard[2] + yayilim * 1.05],
-    target: [centreX, 0.6, yard[2]],
+    position: [centreX + yayilim * 0.25, yayilim * 0.85, centreZ + yayilim * 1.1],
+    target: [centreX, 0.6, centreZ],
   };
 }
 
@@ -724,7 +740,7 @@ export function truckRoute(config: FactoryDescriptor): readonly World[] {
  * Şerit binaların tarafında (−Z): hem tırla çakışmıyor hem de hareket
  * kameradan görünüyor.
  */
-const FORKLIFT_LANE_Z = -3.4;
+const FORKLIFT_LANE_Z = -4.5 * SCALE;
 
 export function forkliftRoute(config: FactoryDescriptor): readonly World[] {
   const park = truckParkWorld(config);
@@ -732,7 +748,7 @@ export function forkliftRoute(config: FactoryDescriptor): readonly World[] {
   const z = park[2] + FORKLIFT_LANE_Z;
   // Yükleme noktası dorsenin hizasında: kabin +X'te, dorse geride.
   return [
-    [park[0] - 5, 0, z],
+    [park[0] - 9 * SCALE, 0, z],
     [dockX, 0, z],
   ];
 }
@@ -892,33 +908,75 @@ function carrierDock(config: FactoryDescriptor): World {
 }
 
 /**
- * Fabrika çıkışı.
+ * Sevkiyat sahası artık **üç hattı birden** kapsıyor.
  *
- * Rampanın tam sağında: taşıyıcı yüzü sağa dönük yükleniyor ve aynı hat
- * üzerinde düz çıkıyor. Önceki sürümde çıkış hem sağda hem ileride olduğu için
- * taşıyıcı çapraz duruyordu.
+ * Her hattın kendi yükleme şeridi var ve şerit, hattın kendi hizasında: bir
+ * operatör hangi taşıyıcının hangi hattın aracını yüklediğini bakınca görüyor.
+ * Tek şerit varken üç hattın taşıyıcısı aynı noktaya yerleşiyor, yani üst üste
+ * biniyordu.
  */
-const EXIT_ROAD_X = 34;
+export function shippingLaneZ(config: FactoryDescriptor, lineId: string): number {
+  return toWorld(0, linePlanY(config, lineId))[2];
+}
 
-function carrierExit(config: FactoryDescriptor): World {
-  const [x, , z] = carrierDock(config);
-  return [x + EXIT_ROAD_X, 0, z];
+/** Bir hattın yükleme noktası: sevkiyat sahasının o hatta ait şeridi. */
+function carrierDockOf(config: FactoryDescriptor, lineId: string): World {
+  const [x] = carrierDock(config);
+  return [x, 0, shippingLaneZ(config, lineId)];
+}
+
+/** Şeritlerin birleştiği nokta; buradan sonrası tek yol. */
+const MERGE_PLAN_X = 190;
+/** Çıkış kapısının plan üzerindeki yeri, ortak yolun ucunda. */
+const EXIT_GATE_PLAN_X = 204;
+
+/** Bütün şeritlerin birleştiği ortak yolun Z'si: orta hattın hizası. */
+function ortakYolZ(config: FactoryDescriptor): number {
+  const orta = config.lines[Math.floor(config.lines.length / 2)];
+  return orta ? shippingLaneZ(config, orta.id) : toWorld(0, 0)[2];
 }
 
 /**
- * Çıkış güvenlik kapısı.
+ * Çıkış güvenlik kapısı — **tek**.
  *
- * Girişte olan çıkışta da olmalı: bir fabrikadan araç, kapıda durmadan
- * çıkmaz. Çıkış yolunun üzerinde, sahanın dışında.
+ * Girişte olan çıkışta da olmalı ve bir tane olmalı: üç şeridin her birine
+ * kapı koymak, tesisi üç ayrı çıkışı olan bir yer yapardı. Şeritler ortak yolda
+ * birleşiyor, kapı o yolun ucunda.
  */
 export function exitGatePlacement(config: FactoryDescriptor): World {
-  const [x, , z] = carrierDock(config);
-  return [x + EXIT_ROAD_X * 0.78, 0, z];
+  const [x, , z] = toWorld(EXIT_GATE_PLAN_X, 0);
+  return [x, 0, ortakYolZ(config)];
+  void z;
 }
 
-/** Taşıyıcının çıkış yolu: rampadan kapıya ve dışarı. */
+/**
+ * Bir hattın taşıyıcısının izlediği yol.
+ *
+ * Kendi şeridinde doğuya, ortak yolda orta hizaya, oradan tek kapıdan dışarı.
+ * Üç parça hâlinde: taşıyıcı hiçbir yerde çapraz süzülmüyor.
+ */
+export function carrierRouteOf(config: FactoryDescriptor, lineId: string): readonly World[] {
+  const baslangic = carrierDockOf(config, lineId);
+  const [birlesmeX] = toWorld(MERGE_PLAN_X, 0);
+  const yolZ = ortakYolZ(config);
+  const kapi = exitGatePlacement(config);
+
+  return [
+    baslangic,
+    [birlesmeX, 0, baslangic[2]],
+    [birlesmeX, 0, yolZ],
+    [kapi[0] + 8, 0, yolZ],
+  ];
+}
+
+/** Geriye dönük: ilk hattın yolu; zemin çizimi hepsini ayrı ayrı çiziyor. */
 export function carrierRoute(config: FactoryDescriptor): readonly World[] {
-  return [carrierDock(config), carrierExit(config)];
+  return carrierRouteOf(config, config.lines[0]?.id ?? "");
+}
+
+/** Bütün hatların çıkış yolları — zemine çizilmesi için. */
+export function carrierRoutes(config: FactoryDescriptor): readonly (readonly World[])[] {
+  return config.lines.map((line) => carrierRouteOf(config, line.id));
 }
 
 /**
@@ -932,8 +990,15 @@ function kapiAcikligi(mesafe: number, pencere: number): number {
   return Math.max(0, Math.min(1, 1 - Math.abs(mesafe) / pencere));
 }
 
-/** Geçiş penceresi: aracın kapının bu kadar yakınında olması bariyeri kaldırır. */
-const GATE_WINDOW = 14;
+/**
+ * Geçiş penceresi: aracın kapıya bu kadar yaklaşması bariyeri kaldırır.
+ *
+ * Metre cinsinden yazılıyor. Önceden 14 dünya birimiydi ve modeller plana göre
+ * üç kat büyük çizildiği için bu mesafe "kapının yanında" demek oluyordu;
+ * ölçek düzeltilince aynı sayı 40 metreye karşılık geldi ve bariyer, taşıyıcı
+ * daha rampadayken açılıyordu.
+ */
+const GATE_WINDOW = 18 * SCALE;
 
 /**
  * Giriş bariyeri ne kadar açık?
@@ -971,13 +1036,17 @@ export function exitGateOpenness(config: FactoryDescriptor, frame: FactoryFrame)
  * rampada duruyor, yola çıkınca çıkışa doğru ilerliyor, teslim edilince
  * sahneden çıkıyor — çünkü teslim edilmiş bir sevkiyat artık fabrikada değil.
  */
-export function placeCarriers(config: FactoryDescriptor, frame: FactoryFrame): PlacedCarrier[] {
-  const dock = carrierDock(config);
-  const exit = carrierExit(config);
-  // Yüzü sağa dönük, düz. Taşıyıcının burnu +X'e bakıyor ve modelin uzunluk
-  // ekseni de +X, yani ek bir döndürme gerekmiyor.
-  const heading = 0;
+/**
+ * Bir taşıyıcının kapladığı boy, dünya biriminde.
+ *
+ * Oto taşıyıcı ~11 m; bekleyenler bu mesafeden yakın dizilirse iç içe geçer.
+ * Araya bir taşıyıcı boyu daha pay bırakılıyor — sahada da tamponlarına
+ * dayanmış hâlde beklemezler.
+ */
+const CARRIER_LENGTH = 11 * SCALE;
+const CARRIER_GAP = CARRIER_LENGTH * 1.6;
 
+export function placeCarriers(config: FactoryDescriptor, frame: FactoryFrame): PlacedCarrier[] {
   const visible = frame.shipments.filter(
     (shipment) =>
       shipment.status === "READY" ||
@@ -986,9 +1055,15 @@ export function placeCarriers(config: FactoryDescriptor, frame: FactoryFrame): P
       shipment.status === "IN_TRANSIT",
   );
 
-  return visible.map((shipment, index) => {
-    // Yolda olan taşıyıcı kalan süresine göre çıkışa doğru ilerliyor.
+  // Kuyruk **şerit başına** sayılıyor. Tek sayaçla, ikinci hattın ilk
+  // taşıyıcısı birinci hattın arkasına diziliyordu; oysa ayrı şeritteler ve
+  // kendi rampalarında beklerler.
+  const seritSirasi = new Map<string, number>();
+
+  return visible.map((shipment) => {
+    const yol = carrierRouteOf(config, shipment.lineId);
     const leaving = shipment.status === "DISPATCHED" || shipment.status === "IN_TRANSIT";
+
     // Toplam yol süresi sevkiyat planından geliyor.
     //
     // Önceden bölen olarak **kalan süre** kullanılıyordu; o zaman ilerleme
@@ -998,17 +1073,16 @@ export function placeCarriers(config: FactoryDescriptor, frame: FactoryFrame): P
     const transit = Math.max(1, config.shipmentPlan.transitTicks);
     const t = leaving ? Math.max(0, Math.min(1, 1 - shipment.ticksRemaining / transit)) : 0;
 
-    // Rampada bekleyenler arka arkaya dizilsin, üst üste binmesin. Kapılar
-    // Z ekseni boyunca sıralandığı için sıra da o yönde.
-    const queue = leaving ? 0 : index * 7;
+    const { position, heading } = alongPath(yol, t);
+
+    // Rampada bekleyenler arka arkaya dizilsin, üst üste binmesin: kendi
+    // şeritlerinde geriye doğru.
+    const sira = leaving ? 0 : (seritSirasi.get(shipment.lineId) ?? 0);
+    if (!leaving) seritSirasi.set(shipment.lineId, sira + 1);
 
     return {
       id: shipment.id,
-      position: [
-        dock[0] + (exit[0] - dock[0]) * t,
-        0,
-        dock[2] + (exit[2] - dock[2]) * t + queue,
-      ] as World,
+      position: [position[0] - sira * CARRIER_GAP, 0, position[2]] as World,
       heading,
       status: shipment.status,
       loaded: shipment.productIds.length,
@@ -1017,6 +1091,7 @@ export function placeCarriers(config: FactoryDescriptor, frame: FactoryFrame): P
     };
   });
 }
+
 
 /** Giriş kalite tezgâhının yeri. */
 export function incomingQcPlacement(config: FactoryDescriptor): World {

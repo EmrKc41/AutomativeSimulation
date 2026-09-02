@@ -50,7 +50,7 @@ npx tsc --noEmit && npx eslint . && npx prettier --check . && npm test
 cd web && npx tsc --noEmit && npx eslint . && npm test && npm run build
 ```
 
-Beklenen: motorda **169 test**, web tarafında **63 test**, hepsi geçer.
+Beklenen: motorda **169 test**, web tarafında **65 test**, hepsi geçer.
 
 Tesiste artık **üç üretim hattı** var (LINE-01 Meltem, LINE-02 Poyraz,
 LINE-03 Lodos); 18 istasyon, 9 doli.
@@ -169,7 +169,7 @@ git commit -m "Automotive smart factory digital twin: engine, command centre, 3D
   `.next/` altına yazıyor. Gitignore'da; zararsız ama dizini kirletiyor. Sebep:
   arayüz motorun Türkçe sözlüğünü (`src/labels.ts`) içe aktarıyor ve bu dosya
   `web/` dışında.
-- **3D sahnede ölçek uyuşmazlığı var — açık konu.** Konumlar `SCALE = 0.35`
+- **~~3D sahnede ölçek uyuşmazlığı~~ — ÇÖZÜLDÜ (aşağıdaki bölüme bakın). Eski kayıt:** Konumlar `SCALE = 0.35`
   ile küçültülüyor, modeller `ASSET_SCALE = 1.05` ile çiziliyor. Sonuç: bir
   tır planda ~48 metre yer kaplıyor, oysa mal kabul ile giriş kalite arası
   18 metre. Ekranda tır iki bölgeyi birden aşıyor. `ASSET_SCALE`'i 0,35'e
@@ -771,10 +771,61 @@ kat büyük çiziliyor, o yüzden 7 birimlik istasyon aralığına 4,2 birimlik
 makine sığmıyor. Tek tek model kaydırmak semptomu örter; asıl karar hâlâ
 verilmedi.
 
+### Ölçek uyuşmazlığı çözüldü
+
+İki turdur açık duran madde kapandı. Doğrusu tekti: **plan birimleri metre,
+modeller de metre, o hâlde ölçek de aynı olmalı.** `ASSET_SCALE` artık `SCALE`
+(0,35). Modeller küçük kaldıkları için değil, **öyle modellendikleri** için
+küçüktü: pres 2,6 m, boyahane 4,4 m — bunlar tezgâh ölçüsü. Gerçek bir
+otomotiv hattında pres 6 metreyi, boya kabini 9 metreyi aşar.
+
+Çözüm çarpan değil doğru boyut: `disa_aktar` artık varlık başına bir ölçek
+alıyor ve makineler gerçek ölçülerinde üretiliyor (pres ×2,4, boyahane ×2,0,
+montaj ×1,5, kalite ×1,3, tamir ×2,0, konveyör ×1,25, tır ×1,45). Zaten gerçek
+boyutta olanlar (bina, araç, operatör, robot, forklift, bariyer) 1,0.
+
+Bunu yaparken **kendi açtığım bir hataya düştüm**: ilk denemede
+`nesne.scale = olcek` yazdım. Oysa `kutu()` parçanın boyutunu nesne ölçeğinde
+tutuyor ve `birlestir()` bunu birleşik nesneye taşıyor — yani atama, her
+parçanın kendi boyutunu sildi ve bütün modeller küpe döndü. Sahnede fabrikayı
+boydan boya kesen bir dikme çıktı. Doğrusu çarpmak; konum da aynı çarpanla
+açılmalı, yoksa montaj dağılır.
+
+Ölçek dürüstleşince modellere göre ayarlanmış mesafeler 3 kat cömert kaldı ve
+metre cinsinden yeniden yazıldı: `GATE_WINDOW`, `FORKLIFT_LANE_Z`, forklift
+alış noktası. Konveyör ve pres için sahnedeki sabit ofsetler (bant yüksekliği,
+koç stroku) modelin kendi çarpanını taşıyor.
+
+Ayrıca konveyör her istasyonun gövdesinin içinden geçiyordu; artık istasyonların
+arasında akıyor, prese girip presten çıkıyor.
+
+### Sevkiyat üç hatta yayıldı, çıkış tek kapıdan
+
+- **Sevkiyat hat başına.** `Shipment.lineId` eklendi; bir oto taşıyıcı tek
+  hattın araçlarını topluyor ve **kendi şeridinde** yükleniyor. Şerit hattın
+  kendi hizasında: hangi taşıyıcının hangi hattı yüklediği bakınca görünüyor.
+- **Çıkış yolu paylaşılan bir kaynak.** Üç hattın taşıyıcısı aynı takta
+  dolduğu için yüklemeleri aynı dakikaya denk geliyordu. Çıkış yolunda aynı
+  anda tek taşıyıcı olabiliyor; bekleyen rampada kalıyor. Ölçüldü: 480
+  dakikada 45 çıkışın **hiçbiri** 3 dakika içinde çakışmıyor. Kuyruk uydurma
+  değil, tek kapılı bir tesisin gerçeği.
+- **Tek çıkış kapısı.** Üç şerit ortak yolda birleşiyor, kapı o yolun ucunda.
+  Üç şeride üç kapı koymak, tesisi üç ayrı çıkışı olan bir yer yapardı.
+- **Tırlar iç içe geçmiyor.** Kuyruk şerit başına sayılıyor (tek sayaçla
+  ikinci hattın taşıyıcısı birincinin arkasına diziliyordu) ve bekleyenler bir
+  taşıyıcı boyundan uzak. Teste bağlandı.
+- **Doli güzergâhı.** Depo ortak, hatlar alt alta; arabaların depodan kendi
+  koridorlarına çıktığı bağlantı yolu çizilmemişti, ikinci ve üçüncü hattın
+  arabaları boşlukta beliriyor gibi görünüyordu.
+
+**Yol boyunca bulunan bir hata:** `alongPath` açıyı `atan2(dx, dz)` ile
+hesaplıyordu; bu **+Z'ye bakan** bir model için doğru. Oysa tır, oto taşıyıcı,
+doli ve forkliftin hepsi +X'e bakıyor. Yani doli arabaları baştan beri
+gittikleri yöne dik duruyordu — tırda düzeltilen hatanın fark edilmemiş hâli.
+
 ### Sırada ne var
 
-Önce yukarıdaki **ölçek uyuşmazlığı** kararı (bkz. bölüm 6) — sahnenin geri
-kalanı ona bağlı. Sonra şartnamenin Faz 2'si: giriş kalite kontrol + insan silüetleri. Motor tarafı
+Şartnamenin Faz 2'si: giriş kalite kontrol + insan silüetleri. Motor tarafı
 zaten hazır (`MATERIAL_ACCEPTED` / `MATERIAL_QUARANTINED` olayları var), iş
 çoğunlukla görselleştirme. Sonra Faz 3 (depo), Faz 4-5 (istasyon operasyonları
 — burada rota genişletmesi devreye girer).

@@ -10,6 +10,7 @@ import type {
   Shipment,
 } from "@/lib/contract";
 import {
+  SCALE,
   SCENE_FOV_DEG,
   zonesOf,
   bufferSlot,
@@ -18,7 +19,9 @@ import {
   AISLE_PLAN_Y,
   agvWorld,
   aisleZ,
-  carrierRoute,
+  carrierRouteOf,
+  carrierRoutes,
+  shippingLaneZ,
   entryGateOpenness,
   exitGateOpenness,
   forkliftAt,
@@ -234,6 +237,7 @@ function agv(overrides: Partial<Agv> = {}): Agv {
 function shipment(overrides: Partial<Shipment> = {}): Shipment {
   return {
     id: "SHP-1",
+    lineId: "LINE-01",
     customer: "C",
     destination: "D",
     vehicle: "V",
@@ -643,7 +647,7 @@ describe("scene vocabulary", () => {
     const halfV = Math.tan((SCENE_FOV_DEG / 2) * (Math.PI / 180));
     const halfH = Math.tan(Math.atan(halfV * (16 / 9)));
 
-    for (const point of [...carrierRoute(config), exitGatePlacement(config)]) {
+    for (const point of [...carrierRoutes(config).flat(), exitGatePlacement(config)]) {
       const v = subtract(point, mark.position);
       const depth = dot(v, forward);
       const nerede = `[${point[0].toFixed(1)}, ${point[2].toFixed(1)}]`;
@@ -1089,8 +1093,10 @@ describe("yerleşim revizyonu: bağımsız alanlar, düz tırlar, tanımlı güz
     const park = truckParkWorld(config);
     const [alis, birakis] = forkliftRoute(config);
 
-    // Şerit tırın ekseninden ayrı.
-    expect(Math.abs(alis![2] - park[2])).toBeGreaterThan(2);
+    // Şerit tırın ekseninden ayrı: dorse yarı genişliğinden (~1,25 m) fazla,
+    // yani forklift gövdenin yanından geçiyor. Eşik metre cinsinden yazılıyor;
+    // dünya birimiyle yazılmış hâli, ölçek düzeltilince anlamını yitirmişti.
+    expect(Math.abs(alis![2] - park[2])).toBeGreaterThan(3 * SCALE);
     // İki uç aynı şeritte: forklift çapraz süzülmüyor.
     expect(alis![2]).toBeCloseTo(birakis![2], 6);
     // Ve gerçekten bir mesafe kat ediyor.
@@ -1156,14 +1162,84 @@ describe("yerleşim revizyonu: bağımsız alanlar, düz tırlar, tanımlı güz
    * Bir fabrikadan araç kapıda durmadan çıkmaz. Yalnızca girişte kapı olsaydı
    * tesisin bir tarafı çitsiz kalırdı.
    */
-  test("carriers leave through a security gate too", () => {
+  /**
+   * Çıkış kapısı **bir tane** ve bütün şeritler ona bağlanıyor.
+   *
+   * Üç yükleme şeridinin her birine kapı koymak, tesisi üç ayrı çıkışı olan
+   * bir yer yapardı. Şeritler ortak yolda birleşiyor, kapı o yolun ucunda.
+   */
+  test("every lane leaves through the same single security gate", () => {
     const gate = exitGatePlacement(config);
-    const [yard, exit] = carrierRoute(config);
 
-    // Kapı çıkış yolunun üzerinde: sahadan sonra, dışarıdan önce.
-    expect(gate[0]).toBeGreaterThan(yard![0]);
-    expect(gate[0]).toBeLessThan(exit![0]);
-    expect(gate[2]).toBeCloseTo(yard![2], 6);
+    for (const line of config.lines) {
+      const yol = carrierRouteOf(config, line.id);
+      const bas = yol[0]!;
+      const son = yol.at(-1)!;
+
+      // Şerit sahadan başlıyor, kapıdan sonra bitiyor.
+      expect(gate[0]).toBeGreaterThan(bas[0]);
+      expect(son[0]).toBeGreaterThan(gate[0]);
+
+      // Ve son parça kapının hizasında: yani araç kapıdan geçiyor, yanından
+      // değil.
+      expect(son[2]).toBeCloseTo(gate[2], 6);
+    }
+  });
+
+  /**
+   * Her hattın kendi yükleme şeridi var ve şeritler ayrı.
+   *
+   * Tek şerit varken üç hattın taşıyıcısı aynı noktaya yerleşiyordu — yani üst
+   * üste biniyorlardı.
+   */
+  test("each line loads in its own lane", () => {
+    const seritler = config.lines.map((line) => shippingLaneZ(config, line.id));
+    expect(new Set(seritler).size).toBe(config.lines.length);
+
+    // Şeritler bir taşıyıcı boyundan geniş aralıklı olmalı.
+    const sirali = [...seritler].sort((a, b) => a - b);
+    for (let i = 1; i < sirali.length; i += 1) {
+      expect(sirali[i]! - sirali[i - 1]!).toBeGreaterThan(11 * SCALE);
+    }
+  });
+
+  /**
+   * Bekleyen taşıyıcılar iç içe geçmemeli.
+   *
+   * Aynı şeritte sıra bekleyenler kendi boylarından yakın dizilirse ekranda
+   * birbirinin içinden geçerler.
+   */
+  test("carriers waiting in the same lane never overlap", () => {
+    const bekleyenler = placeCarriers(
+      config,
+      frame({
+        shipments: [
+          shipment({ id: "SHP-1", status: "READY", productIds: ["CAR-1"] }),
+          shipment({ id: "SHP-2", status: "READY", productIds: ["CAR-2"] }),
+          shipment({ id: "SHP-3", status: "LOADING", productIds: ["CAR-3"] }),
+          // Başka hat: kendi şeridinde, birincinin arkasına dizilmemeli.
+          shipment({ id: "SHP-4", lineId: "LINE-02", status: "READY", productIds: ["CAR-4"] }),
+        ],
+      }),
+    );
+
+    for (const a of bekleyenler) {
+      for (const b of bekleyenler) {
+        if (a.id >= b.id) continue;
+        const dx = Math.abs(a.position[0] - b.position[0]);
+        const dz = Math.abs(a.position[2] - b.position[2]);
+        expect(
+          dx > 11 * SCALE || dz > 11 * SCALE,
+          `${a.id} ile ${b.id} iç içe geçiyor`,
+        ).toBe(true);
+      }
+    }
+
+    // İkinci hattın taşıyıcısı kendi şeridinde, birincinin kuyruğunda değil.
+    const ikinci = bekleyenler.find((carrier) => carrier.id === "SHP-4")!;
+    const birinci = bekleyenler.find((carrier) => carrier.id === "SHP-1")!;
+    expect(ikinci.position[0]).toBeCloseTo(birinci.position[0], 6);
+    expect(ikinci.position[2]).not.toBeCloseTo(birinci.position[2], 3);
   });
 
   /**
@@ -1249,19 +1325,51 @@ describe("yerleşim revizyonu: bağımsız alanlar, düz tırlar, tanımlı güz
         frame({
           shipments: [shipment({ status: "IN_TRANSIT", productIds: ["CAR-1"], ticksRemaining })],
         }),
-      )[0]!.position[0];
+      )[0]!.position;
 
-    const [yard, exit] = carrierRoute(config);
-    const yariYol = (yard![0] + exit![0]) / 2;
+    /*
+     * Hız **yol boyunca** ölçülüyor, X ekseninde değil.
+     *
+     * Çıkış artık düz bir çizgi değil: taşıyıcı önce kendi şeridinde doğuya,
+     * sonra ortak yola, sonra kapıya gidiyor. Sadece X'e bakan bir kontrol,
+     * orta parçada (yalnızca Z değişiyor) aracı durmuş sanardı.
+     */
+    // Yolun toplam uzunluğu, parça parça.
+    const yol = carrierRouteOf(config, "LINE-01");
+    const boy = yol
+      .slice(1)
+      .reduce(
+        (toplam, nokta, i) =>
+          toplam + Math.hypot(nokta[0] - yol[i]![0], nokta[2] - yol[i]![2]),
+        0,
+      );
 
-    // Yolun yarısında, gerçekten yarı yolda.
-    expect(nerede(6)).toBeCloseTo(yariYol, 1);
-    // Ve her adımda aynı kadar ilerliyor.
-    const adimlar = [12, 9, 6, 3, 0].map(nerede);
-    const farklar = adimlar.slice(1).map((deger, i) => deger - adimlar[i]!);
-    for (const fark of farklar) {
-      expect(fark).toBeCloseTo(farklar[0]!, 6);
-    }
+    // Sık örnekleyip **yay uzunluğunu** topluyoruz: ardışık iki nokta arasını
+    // doğrudan ölçmek, köşelerde kirişi ölçer ve aracı yavaşlamış sanar.
+    const adim = 200;
+    const noktalar = Array.from({ length: adim + 1 }, (_, i) => nerede(12 - (12 * i) / adim));
+    const katedilen = noktalar
+      .slice(1)
+      .reduce(
+        (toplam, nokta, i) =>
+          toplam + Math.hypot(nokta[0] - noktalar[i]![0], nokta[2] - noktalar[i]![2]),
+        0,
+      );
+
+    // Yolun tamamını kat etmiş olmalı. Örnekleme köşeleri kirişle kestiği için
+    // ölçülen yay bir miktar kısa çıkıyor; tolerans onu karşılıyor.
+    expect(katedilen).toBeCloseTo(boy, 0);
+
+    // Ve yarı yolda gerçekten yarı yolda: hız sabit.
+    const yariNoktalar = noktalar.slice(0, adim / 2 + 1);
+    const yariMesafe = yariNoktalar
+      .slice(1)
+      .reduce(
+        (toplam, nokta, i) =>
+          toplam + Math.hypot(nokta[0] - yariNoktalar[i]![0], nokta[2] - yariNoktalar[i]![2]),
+        0,
+      );
+    expect(yariMesafe).toBeCloseTo(boy / 2, 0);
   });
 
   /**
@@ -1355,10 +1463,13 @@ describe("yerleşim revizyonu: bağımsız alanlar, düz tırlar, tanımlı güz
       }),
     )[0]!;
 
-    expect(waiting.heading).toBe(0);
-    expect(leaving.position[0]).toBeGreaterThan(waiting.position[0]);
-    // Düz çıkış: yanal kayma yok.
-    expect(leaving.position[2]).toBeCloseTo(waiting.position[2], 6);
+    // Rampada yüzü sağa dönük: yükleme o yönde.
+    expect(waiting.heading).toBeCloseTo(0, 6);
+    // Ve çıkarken kapıya doğru ilerlemiş.
+    const kapi = exitGatePlacement(config);
+    expect(Math.abs(leaving.position[0] - kapi[0])).toBeLessThan(
+      Math.abs(waiting.position[0] - kapi[0]),
+    );
   });
 
   test("shipping gets the same treatment as receiving: its own building, off the yard", () => {

@@ -428,6 +428,14 @@ export interface WorkOrder {
 
 export interface Shipment {
   readonly id: string;
+  /**
+   * Yükü hangi hattın ürettiği.
+   *
+   * Bir oto taşıyıcı tek hattın araçlarını topluyor: sahada da yükleme
+   * rampaları hat hat ayrılır ve bir taşıyıcı iki farklı modelin karışımıyla
+   * çıkmaz.
+   */
+  readonly lineId: string;
   readonly customer: string;
   readonly destination: string;
   readonly vehicle: string;

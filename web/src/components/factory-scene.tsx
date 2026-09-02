@@ -24,7 +24,7 @@ import {
   cameraBookmarks,
   aisleZ,
   cameraFarPlane,
-  carrierRoute,
+  carrierRoutes,
   forkliftRoute,
   maxCameraDistance,
   truckRoute,
@@ -34,6 +34,7 @@ import {
   stationWorld,
   toWorld,
   type PlacedUnit,
+  type World,
 } from "@/lib/scene-layout";
 import { MACHINE_STATE, TONE } from "@/lib/status";
 
@@ -215,10 +216,23 @@ function Zones({ config, showLabels }: { config: FactoryDescriptor; showLabels: 
  * yapıyorlar: bir doli bu çizginin dışına çıkmaz.
  */
 function TugRoutes({ config }: { config: FactoryDescriptor }) {
-  // Her hattın kendi koridoru var. Tek koridor çizmek, üç hattın arabalarını
-  // aynı yoldan geçiriyormuş gibi gösterirdi.
+  const [storeX, , storeZ] = toWorld(...planPosition(config, "RAW-STOCK-A"));
+  // Depo ortak ve hatlar alt alta; arabaların depodan kendi koridorlarına
+  // çıktığı **bağlantı yolu** çizilmemişti. Çizgi olmayınca ikinci ve üçüncü
+  // hattın arabaları boşlukta beliriyor gibi görünüyordu.
+  const koridorlar = config.lines.map((line) => aisleZ(config, line.id));
+  const enUzak = koridorlar.reduce((a, b) => (Math.abs(b - storeZ) > Math.abs(a - storeZ) ? b : a), storeZ);
+
   return (
     <group>
+      {/* Depodan en uzak koridora kadar uzanan dikey bağlantı. */}
+      <mesh
+        rotation={[-Math.PI / 2, 0, 0]}
+        position={[storeX, 0.014, (storeZ + enUzak) / 2]}
+      >
+        <planeGeometry args={[0.5, Math.abs(enUzak - storeZ)]} />
+        <meshBasicMaterial color={TONE.logistics.hex} transparent opacity={0.26} />
+      </mesh>
       {config.lines.map((line) => (
         <TugRoute key={line.id} config={config} lineId={line.id} />
       ))}
@@ -269,21 +283,60 @@ function TugRoute({ config, lineId }: { config: FactoryDescriptor; lineId: strin
  * Doli koridorlarından daha geniş, çünkü tır daha geniş — genişlik burada süs
  * değil, hangi aracın geçtiğini söyleyen şey.
  */
+/**
+ * Çok parçalı bir güzergâhı zemine çiz.
+ *
+ * Her parça kendi ekseninde düz bir şerit; köşelerde parçalar bir şerit
+ * genişliği kadar örtüşüyor ki yol kesintili görünmesin.
+ */
+function Yol({
+  nokta,
+  genislik,
+  opaklik = 0.16,
+}: {
+  nokta: readonly World[];
+  genislik: number;
+  opaklik?: number;
+}) {
+  return (
+    <group>
+      {nokta.slice(0, -1).map((bas, index) => {
+        const son = nokta[index + 1]!;
+        const dx = Math.abs(son[0] - bas[0]);
+        const dz = Math.abs(son[2] - bas[2]);
+        if (dx < 1e-6 && dz < 1e-6) return null;
+        return (
+          <mesh
+            key={index}
+            rotation={[-Math.PI / 2, 0, 0]}
+            position={[(bas[0] + son[0]) / 2, 0.012, (bas[2] + son[2]) / 2]}
+          >
+            <planeGeometry args={[dx + genislik, dz + genislik]} />
+            <meshBasicMaterial color={TONE.logistics.hex} transparent opacity={opaklik} />
+          </mesh>
+        );
+      })}
+    </group>
+  );
+}
+
 function TruckRoad({ config }: { config: FactoryDescriptor }) {
   const [gate, corner, park] = truckRoute(config);
-  const [yard, exit] = carrierRoute(config);
   const [alis, birakis] = forkliftRoute(config);
-  if (!gate || !corner || !park || !alis || !birakis || !yard || !exit) return null;
+  if (!gate || !corner || !park || !alis || !birakis) return null;
 
   const genislik = 3.4;
 
   return (
     <group>
-      {/* Çıkış yolu: sevkiyat sahasından çıkış kapısına ve dışarı. */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[(yard[0] + exit[0]) / 2, 0.012, yard[2]]}>
-        <planeGeometry args={[Math.abs(exit[0] - yard[0]) + genislik, genislik]} />
-        <meshBasicMaterial color={TONE.logistics.hex} transparent opacity={0.16} />
-      </mesh>
+      {/*
+        Çıkış yolları: her hattın yükleme şeridi doğuya gidiyor, üçü ortak
+        yolda birleşiyor ve tek kapıdan çıkıyor. Şeritleri ayrı ayrı çizmek,
+        hangi taşıyıcının nereden geldiğini okunur kılıyor.
+      */}
+      {carrierRoutes(config).map((yol, index) => (
+        <Yol key={index} nokta={yol} genislik={genislik} />
+      ))}
       {/* Giriş yolu: kapıdan köşeye, Z ekseninde. */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[gate[0], 0.012, (gate[2] + corner[2]) / 2]}>
         <planeGeometry args={[genislik, Math.abs(gate[2] - corner[2]) + genislik]} />

@@ -3,6 +3,8 @@
 import { useGLTF } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
 import { useMemo, useRef } from "react";
+
+import { SCALE } from "@/lib/scene-layout";
 import type { Group, Object3D } from "three";
 
 /**
@@ -54,7 +56,20 @@ export const MODEL = {
  * geliyor. Buradaki ölçek yalnızca metre cinsinden modellenmiş varlıkları
  * sahnenin daha küçük birimine indiriyor.
  */
-export const ASSET_SCALE = 1.05;
+/**
+ * Varlıkların sahne ölçeği — **konumlarla aynı**.
+ *
+ * Uzun süre 1,05'ti, konumlar ise 0,35 ile küçültülüyordu. Yani modeller plana
+ * göre üç kat büyük çiziliyordu: 16 metrelik bir tır planda 48 metre yer
+ * kaplıyor, mal kabul ile giriş kalite arasındaki 18 metrelik boşluğu tek
+ * başına aşıyordu. Binalar sahayı eziyor, makineler konveyörün içinden
+ * geçiyordu — hepsi aynı kusurun görüntüleriydi.
+ *
+ * Doğrusu tek: plan birimleri metre, modeller de metre, o hâlde ölçek de aynı
+ * olmalı. Modeller küçük kaldığı için değil, **öyle modellendikleri** için
+ * küçüktü; çözüm çarpan değil, `build_assets.py` içinde gerçek boyut.
+ */
+export const ASSET_SCALE = SCALE;
 
 /**
  * Konveyör bandının yüksekliği, sahne biriminde.
@@ -62,7 +77,9 @@ export const ASSET_SCALE = 1.05;
  * Araç bandın *üstünde* durmalı. İlk sürümde zemine konulmuştu ve gövde
  * banda gömülü göründü — kaporta yerine düz bir plaka gibi.
  */
-export const BELT_HEIGHT = 0.68 * ASSET_SCALE;
+// Konveyör modeli gerçek boyuta çıkarılırken 1,25 kat büyüdü; bant yüksekliği
+// modelin kendi ölçüsü olduğu için aynı çarpanı taşıyor.
+export const BELT_HEIGHT = 0.68 * 1.25 * ASSET_SCALE;
 
 /**
  * Aynı geometriyi paylaşan bağımsız bir kopya, gölgeye açılmış hâlde.
@@ -151,7 +168,9 @@ function PressBody({
     if (!node) return;
     // Bir çevrimde bir kez in-çık: ilerlemenin sinüsü, tepe noktada aşağıda.
     const stroke = running && !reducedMotion ? Math.sin(progress * Math.PI) : 0;
-    node.position.y = (1.35 - stroke * 0.78) * ASSET_SCALE;
+    // Pres modeli 2,4 kat büyüdü; koçun hareket aralığı modelin kendi
+    // ölçüsü, o yüzden aynı çarpanla.
+    node.position.y = (1.35 - stroke * 0.78) * 2.4 * ASSET_SCALE;
   });
 
   return (

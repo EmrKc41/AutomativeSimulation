@@ -176,6 +176,8 @@ export const PAYLOAD_TEXT: Readonly<Record<string, string>> = {
   disposition: "karar",
   durationTicks: "süre dk",
   units: "araç",
+  line: "hat",
+  waitingFor: "bekliyor",
   reason: "sebep",
   batch: "parti",
   workOrder: "iş emri",
