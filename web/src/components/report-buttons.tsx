@@ -4,7 +4,7 @@ import { FileSpreadsheet, FileText, Loader2 } from "lucide-react";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { downloadReport } from "@/lib/api";
+import { IS_LOCAL_ENGINE, downloadReport } from "@/lib/api";
 
 /**
  * Report downloads.
@@ -15,6 +15,22 @@ import { downloadReport } from "@/lib/api";
  */
 export function ReportButtons({ onError }: { onError: (message: string) => void }) {
   const [pending, setPending] = useState<"excel" | "pdf" | null>(null);
+
+  /*
+   * Motor tarayıcıda koşuyorsa rapor **yok** ve bunu saklamıyoruz.
+   *
+   * Excel ve PDF, gömülü yazı tiplerini ve logoyu diskten okuyor; tarayıcıda
+   * dosya sistemi yok. Çalışmayacak bir düğme göstermek, bir kez tıklayıp
+   * hata alan kullanıcıya "burada bir şey bozuk" dedirtir — oysa bozuk değil,
+   * bu sürümde o özellik yok.
+   */
+  if (IS_LOCAL_ENGINE) {
+    return (
+      <p className="text-muted-foreground text-[10px] tracking-widest uppercase">
+        Rapor · motor sunucusuyla
+      </p>
+    );
+  }
 
   const download = (kind: "excel" | "pdf") => {
     setPending(kind);

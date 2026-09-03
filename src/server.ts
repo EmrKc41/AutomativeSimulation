@@ -5,11 +5,11 @@ import { WebSocketServer, type WebSocket } from "ws";
 import { runAllAnalyses } from "./analytics.ts";
 import { SUGGESTED_QUESTIONS, ask } from "./copilot.ts";
 import type { Command } from "./domain.ts";
-import { LOCATION_POSITIONS, factoryConfig, totalDemandPerShift } from "./factory.ts";
+import { factoryDescriptor } from "./descriptor.ts";
 import { BRAND } from "./brand.ts";
 import { buildPdf, buildReportModel, buildWorkbook, reportFileName } from "./report/index.ts";
 import { SimulationRuntime } from "./runtime.ts";
-import { isScenarioKind, scenarios } from "./scenarios.ts";
+import { isScenarioKind } from "./scenarios.ts";
 
 /**
  * REST + WebSocket host for one live factory.
@@ -129,37 +129,6 @@ function parseCommand(body: unknown): Command | null {
     default:
       return null;
   }
-}
-
-function factoryDescriptor() {
-  return {
-    lines: factoryConfig.lines.map((line) => ({
-      id: line.id,
-      model: line.model,
-      route: line.route,
-      reworkStationId: line.reworkStationId,
-      wipCap: line.wipCap,
-      demandPerShift: line.demandPerShift,
-      taktTime: factoryConfig.shiftTicks / line.demandPerShift,
-    })),
-    plant: {
-      maxReworkPasses: factoryConfig.maxReworkPasses,
-      shiftTicks: factoryConfig.shiftTicks,
-      demandPerShift: totalDemandPerShift(factoryConfig),
-      taktTime: factoryConfig.shiftTicks / totalDemandPerShift(factoryConfig),
-    },
-    stations: factoryConfig.stations,
-    materials: factoryConfig.materials,
-    workOrders: factoryConfig.workOrders,
-    shipmentPlan: factoryConfig.shipmentPlan,
-    locations: LOCATION_POSITIONS,
-    scenarios: Object.values(scenarios).map((scenario) => ({
-      kind: scenario.kind,
-      label: scenario.label,
-      description: scenario.description,
-      events: scenario.events,
-    })),
-  };
 }
 
 /** Everything known about one unit, for the traceability drill-down. */

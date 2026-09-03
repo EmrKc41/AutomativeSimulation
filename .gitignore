@@ -34,3 +34,6 @@ next-env.d.ts
 # Kendi git gecmisi var; bizim depomuza girmemeli, bizim bicimlendiricimiz
 # de ona dokunmamali.
 kit-app-template/
+
+# Statik dışa aktarım çıktısı; yayında GitHub Actions üretiyor.
+web/out/

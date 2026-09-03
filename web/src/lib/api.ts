@@ -6,12 +6,9 @@ import type {
   Defect,
   FactoryEvent,
   Inspection,
-  MaterialConfig,
   ProductUnit,
   ScenarioKind,
   Shipment,
-  ShipmentPlanConfig,
-  StationConfig,
   WorkOrder,
 } from "@/lib/contract";
 
@@ -26,46 +23,44 @@ export const API_BASE = process.env.NEXT_PUBLIC_TWIN_API ?? "http://localhost:40
 
 export const WS_URL = API_BASE.replace(/^http/, "ws") + "/ws";
 
+/**
+ * Motor nerede koşuyor?
+ *
+ * `yerel` — simülasyon **tarayıcıda**. Yayındaki sürüm böyle: sunucu yok, o
+ * yüzden uyuyacak, süresi dolacak ya da ücret isteyecek bir şey de yok. Motor
+ * çekirdeğinin hiçbir Node modülüne dokunmaması bunu mümkün kılıyor.
+ *
+ * `uzak` — bugünkü geliştirme akışı: ayrı bir motor süreci, REST + WebSocket.
+ * Ortak durum gerektiğinde (birden fazla kişi aynı fabrikayı izleyecekse)
+ * doğru olan bu.
+ *
+ * Derleme sırasında sabitleniyor; çalışırken değişmiyor.
+ */
+export const ENGINE_MODE: "yerel" | "uzak" =
+  process.env.NEXT_PUBLIC_ENGINE_MODE === "local" ? "yerel" : "uzak";
+
+export const IS_LOCAL_ENGINE = ENGINE_MODE === "yerel";
+
 export interface ScenarioDescriptor {
   readonly kind: ScenarioKind;
   readonly label: string;
   readonly description: string;
 }
 
-export interface FactoryDescriptor {
-  /**
-   * Tesisteki üretim hatları.
-   *
-   * Tek hat varsayımı buradaydı ve sahne, pano, rapor — hepsi ona dayanıyordu.
-   * Artık dizi: her hattın kendi rotası, kendi tamir hücresi ve kendi modeli
-   * var.
-   */
-  readonly lines: readonly {
-    readonly id: string;
-    /** Bu hattın ürettiği model. */
-    readonly model: string;
-    readonly route: readonly string[];
-    readonly reworkStationId: string;
-    readonly wipCap: number;
-    readonly demandPerShift: number;
-    readonly taktTime: number;
-  }[];
-  /** Hatlara değil tesise ait olan ayarlar. */
-  readonly plant: {
-    readonly maxReworkPasses: number;
-    readonly shiftTicks: number;
-    readonly demandPerShift: number;
-    readonly taktTime: number;
-  };
-  readonly stations: readonly StationConfig[];
-  readonly materials: readonly MaterialConfig[];
-  readonly workOrders: readonly WorkOrder[];
-  // Sunucu bunu baştan beri gönderiyordu, tip bilmiyordu. Sahne sevkiyatın
-  // toplam yol süresini buradan okuyor.
-  readonly shipmentPlan: ShipmentPlanConfig;
-  readonly locations: Readonly<Record<string, readonly [number, number]>>;
-  readonly scenarios: readonly ScenarioDescriptor[];
-}
+/**
+ * Tesisin tanımı — **motorun kendi tipi**.
+ *
+ * Burada elle yazılmış bir kopyası vardı ve sessizce yalan söylüyordu:
+ * `workOrders` alanını çalışma-zamanı `WorkOrder` (released, completed,
+ * scrapped…) diye tanımlıyordu, oysa `/api/config` yalnızca statik
+ * `WorkOrderConfig` gönderiyor. Kimse o alanları okumadığı için hata yıllarca
+ * görünmedi; motorun tipini paylaşınca derleyici anında yakaladı.
+ *
+ * Tek tanım, tek gerçek: sunucu ne gönderiyorsa arayüz onu bekliyor.
+ */
+import type { FactoryDescriptor } from "@twin/descriptor";
+
+export type { FactoryDescriptor };
 
 export interface TraceabilityBundle {
   readonly product: ProductUnit;
@@ -82,17 +77,22 @@ async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
   return (await response.json()) as T;
 }
 
-export function fetchConfig(signal?: AbortSignal): Promise<FactoryDescriptor> {
+export async function fetchConfig(signal?: AbortSignal): Promise<FactoryDescriptor> {
+  if (IS_LOCAL_ENGINE) return (await import("@/lib/local-engine")).localConfig();
   return getJson<FactoryDescriptor>("/api/config", signal);
 }
 
-export function fetchCopilotSuggestions(signal?: AbortSignal): Promise<{ questions: string[] }> {
+export async function fetchCopilotSuggestions(
+  signal?: AbortSignal,
+): Promise<{ questions: string[] }> {
+  if (IS_LOCAL_ENGINE) return (await import("@/lib/local-engine")).localSuggestions();
   return getJson<{ questions: string[] }>("/api/copilot/suggestions", signal);
 }
 
-export function fetchAnalytics(
+export async function fetchAnalytics(
   signal?: AbortSignal,
-): Promise<{ simulatedTime: number; analyses: Analysis[] }> {
+): Promise<{ simulatedTime: number; analyses: readonly Analysis[] }> {
+  if (IS_LOCAL_ENGINE) return (await import("@/lib/local-engine")).localAnalytics();
   return getJson<{ simulatedTime: number; analyses: Analysis[] }>("/api/analytics", signal);
 }
 
@@ -104,6 +104,7 @@ export function fetchAnalytics(
  * actually recorded.
  */
 export async function askCopilot(question: string, signal?: AbortSignal): Promise<CopilotAnswer> {
+  if (IS_LOCAL_ENGINE) return (await import("@/lib/local-engine")).localAsk(question);
   const response = await fetch(`${API_BASE}/api/copilot`, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -143,10 +144,15 @@ export async function downloadReport(kind: "excel" | "pdf"): Promise<void> {
   URL.revokeObjectURL(url);
 }
 
-export function fetchTraceability(
+export async function fetchTraceability(
   productId: string,
   signal?: AbortSignal,
 ): Promise<TraceabilityBundle> {
+  if (IS_LOCAL_ENGINE) {
+    const paket = (await import("@/lib/local-engine")).localTraceability(productId);
+    if (!paket) throw new Error(`${productId} bu koşuda yok`);
+    return paket;
+  }
   return getJson<TraceabilityBundle>(`/api/products/${encodeURIComponent(productId)}`, signal);
 }
 
@@ -156,6 +162,7 @@ export function fetchTraceability(
  * disappearing into the stream.
  */
 export async function sendCommand(command: Command): Promise<CommandResult> {
+  if (IS_LOCAL_ENGINE) return (await import("@/lib/local-engine")).localExecute(command);
   const response = await fetch(`${API_BASE}/api/commands`, {
     method: "POST",
     headers: { "content-type": "application/json" },

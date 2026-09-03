@@ -4,6 +4,8 @@ import { useGLTF } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
 import { useMemo, useRef } from "react";
 
+import { assetUrl } from "@/lib/base-path";
+
 import { SCALE } from "@/lib/scene-layout";
 import type { Group, Object3D } from "three";
 
@@ -25,28 +27,28 @@ import type { Group, Object3D } from "three";
  */
 
 export const MODEL = {
-  truck: "/models/tir.glb",
-  carrier: "/models/oto-tasiyici.glb",
-  qcBench: "/models/iqc-masa.glb",
-  productionGate: "/models/gecis.glb",
-  shippingBuilding: "/models/sevkiyat.glb",
-  tugCart: "/models/doli.glb",
-  dock: "/models/rampa.glb",
-  securityGate: "/models/guvenlik.glb",
-  barrier: "/models/bariyer.glb",
-  forklift: "/models/forklift.glb",
-  pallet: "/models/palet.glb",
-  rack: "/models/raf.glb",
-  conveyor: "/models/konveyor.glb",
-  press: "/models/pres.glb",
-  pressRam: "/models/pres-koc.glb",
-  robot: "/models/robot.glb",
-  paintBooth: "/models/boyahane.glb",
-  gantry: "/models/montaj.glb",
-  qualityGate: "/models/kalite.glb",
-  reworkCell: "/models/tamir.glb",
-  operator: "/models/operator.glb",
-  vehicle: "/models/arac.glb",
+  truck: assetUrl("/models/tir.glb"),
+  carrier: assetUrl("/models/oto-tasiyici.glb"),
+  qcBench: assetUrl("/models/iqc-masa.glb"),
+  productionGate: assetUrl("/models/gecis.glb"),
+  shippingBuilding: assetUrl("/models/sevkiyat.glb"),
+  tugCart: assetUrl("/models/doli.glb"),
+  dock: assetUrl("/models/rampa.glb"),
+  securityGate: assetUrl("/models/guvenlik.glb"),
+  barrier: assetUrl("/models/bariyer.glb"),
+  forklift: assetUrl("/models/forklift.glb"),
+  pallet: assetUrl("/models/palet.glb"),
+  rack: assetUrl("/models/raf.glb"),
+  conveyor: assetUrl("/models/konveyor.glb"),
+  press: assetUrl("/models/pres.glb"),
+  pressRam: assetUrl("/models/pres-koc.glb"),
+  robot: assetUrl("/models/robot.glb"),
+  paintBooth: assetUrl("/models/boyahane.glb"),
+  gantry: assetUrl("/models/montaj.glb"),
+  qualityGate: assetUrl("/models/kalite.glb"),
+  reworkCell: assetUrl("/models/tamir.glb"),
+  operator: assetUrl("/models/operator.glb"),
+  vehicle: assetUrl("/models/arac.glb"),
 } as const;
 
 /**

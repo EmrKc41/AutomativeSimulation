@@ -25,7 +25,11 @@
       "@twin/analytics": ["../src/analytics.ts"],
       "@twin/copilot": ["../src/copilot.ts"],
       "@twin/labels": ["../src/labels.ts"],
-      "@twin/brand": ["../src/brand.ts"]
+      "@twin/brand": ["../src/brand.ts"],
+      "@twin/runtime": ["../src/runtime.ts"],
+      "@twin/descriptor": ["../src/descriptor.ts"],
+      "@twin/factory": ["../src/factory.ts"],
+      "@twin/scenarios": ["../src/scenarios.ts"]
     }
   },
   "include": [

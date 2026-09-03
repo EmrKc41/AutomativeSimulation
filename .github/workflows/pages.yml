@@ -1,0 +1,95 @@
+# Komuta merkezini GitHub Pages'te yayınla.
+#
+# Yayındaki sürümde motor **tarayıcıda** koşuyor, o yüzden ayakta tutulacak bir
+# sunucu yok: site düz HTML/JS/CSS olarak duruyor ve süresiz erişilebilir kalıyor.
+#
+# Bir kereye mahsus ayar: depo → Settings → Pages → Source: "GitHub Actions".
+name: Yayınla
+
+on:
+  push:
+    branches: [main]
+  # Elle de tetiklenebilsin: bir şeyi yeniden yayınlamak için commit atmak
+  # gerekmesin.
+  workflow_dispatch:
+
+# Pages'e yazabilmek için gereken en dar izin kümesi.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Aynı anda tek yayın. Üst üste gelen push'larda sonuncusu kazanır, ama
+# yarıda kalan bir yayın iptal edilmez — yarım yayınlanmış bir site
+# yayınlanmamış olandan kötüdür.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  dogrula:
+    name: Kalite kapıları
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+      - run: npm ci --prefix web
+
+      # Yayınlanan şey testten geçmiş olmalı. Kapılar burada da aynı: yeşil
+      # olmayan bir şey yayına çıkmaz.
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm test
+      - run: npm --prefix web run typecheck
+      - run: npm --prefix web run lint
+      - run: npm --prefix web test
+
+  derle:
+    name: Statik siteyi derle
+    needs: dogrula
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+      - run: npm ci --prefix web
+
+      - name: Derle
+        working-directory: web
+        env:
+          # Motor tarayıcıda koşsun: sunucu yok.
+          NEXT_PUBLIC_ENGINE_MODE: local
+          # Pages siteyi /<depo>/ altında sunuyor; model dosyaları ve
+          # bağlantılar bu ön eki taşımalı.
+          NEXT_PUBLIC_BASE_PATH: /${{ github.event.repository.name }}
+        run: npm run build
+
+      # Pages'in Jekyll işlemcisi alt çizgiyle başlayan klasörleri atar;
+      # Next çıktısı `_next` kullanıyor.
+      - run: touch web/out/.nojekyll
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web/out
+
+  yayinla:
+    name: Yayınla
+    needs: derle
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.pages.outputs.page_url }}
+    steps:
+      - id: pages
+        uses: actions/deploy-pages@v4

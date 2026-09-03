@@ -183,6 +183,45 @@ gerçekten eskidi ve test onu yakaladı.
 
 ---
 
+## Yayın
+
+Yayındaki sürümde **motor tarayıcıda koşar**. Sunucu yok; site düz HTML/JS/CSS
+olarak durur ve süresiz erişilebilir kalır — uyuyan süreç, soğuk başlangıç ya da
+aylık ücret yoktur.
+
+Bunu yapabilmemizin sebebi bir tasarım kararının ödülü: motor çekirdeği
+(`engine`, `state`, `metrics`, `analytics`, `copilot`, `runtime`) hiçbir Node
+modülüne dokunmaz. Aynı kaynak hem sunucuda hem tarayıcıda koşar; ikinci bir
+mantık kopyası yoktur.
+
+```
+main'e push  →  kalite kapıları  →  statik derleme  →  GitHub Pages
+```
+
+`.github/workflows/pages.yml` bunu yapar. **Bir kereye mahsus ayar:**
+depo → _Settings_ → _Pages_ → _Source_: **GitHub Actions**.
+
+|                   | Yayın (statik)                  | Geliştirme (sunuculu)              |
+| ----------------- | ------------------------------- | ---------------------------------- |
+| Motor             | Tarayıcıda                      | Ayrı süreç, REST + WebSocket       |
+| Durum             | Her ziyaretçi kendi simülasyonu | Ortak, herkes aynı fabrikayı görür |
+| Excel / PDF rapor | Yok                             | Var                                |
+| Maliyet           | Yok                             | Sunucu barındırma                  |
+
+> Rapor üretimi gömülü yazı tiplerini ve logoyu diskten okur; tarayıcıda dosya
+> sistemi yoktur. Çalışmayacak bir düğme göstermek yerine yayın sürümünde rapor
+> alanı "motor sunucusuyla" der.
+
+Yerelde denemek için:
+
+```bash
+cd web
+NEXT_PUBLIC_ENGINE_MODE=local NEXT_PUBLIC_BASE_PATH=/AutomativeSimulation npm run build
+npx http-server out -p 5173
+```
+
+---
+
 ## Yol haritası
 
 - [x] Deterministik motor, olay kaynaklı durum, 9 fazlı tik

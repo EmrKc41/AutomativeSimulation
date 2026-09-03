@@ -863,6 +863,42 @@ Ad artık **kimliğin** numarasını taşıyor. Kimliğinde numara olmayan istas
 karışma yok. İki test bunu koruyor (ad/kimlik uyuşması ve adların benzersizliği);
 eski davranış geri konduğunda birincisi düşüyor.
 
+### Yayın: motor tarayıcıda, site statik
+
+Kullanıcı "lokal değil, bir yerde süresiz çalışsın" dedi. Ölçtüm: motor
+çekirdeği (`engine`, `state`, `metrics`, `analytics`, `copilot`, `runtime`)
+**hiçbir Node modülüne dokunmuyor**; tek bağımlılık `setInterval`, o da
+tarayıcıda var. Yani simülasyon tarayıcıda koşabilir ve site tamamen statik
+olabilir — ayakta tutulacak sunucu, uyuyan süreç, aylık ücret yok.
+
+- `src/descriptor.ts` paylaşılan: sunucu ve tarayıcı aynı tanımı okuyor.
+- `web/src/lib/local-engine.ts` sunucunun uçlarını **taklit etmiyor**, aynı
+  kaynağı çağırıyor (`runAllAnalyses`, `ask`, `SimulationRuntime`). Kopya mantık
+  yazmak iki fabrikanın sessizce ayrışması demekti.
+- `api.ts` ve `use-factory.ts` moda göre yönleniyor; çerçeve birleştirme, olay
+  tamponu ve çizim zamanlaması iki modda da aynı yoldan geçiyor.
+- `.github/workflows/pages.yml`: push → kalite kapıları → statik derleme →
+  Pages. **Bir kereye mahsus ayar kullanıcıda:** Settings → Pages → Source:
+  GitHub Actions.
+
+**Paylaşılan tip bir hatayı ortaya çıkardı.** Arayüzün elle yazdığı
+`FactoryDescriptor`, `workOrders` alanını çalışma-zamanı `WorkOrder` diye
+tanımlıyordu; oysa `/api/config` yalnızca statik `WorkOrderConfig` gönderiyor.
+Kimse o alanları okumadığı için yıllarca görünmedi. Elle yazılan tip silindi,
+motorunki paylaşılıyor.
+
+**basePath tuzağı:** `useGLTF` ham `fetch` yapıyor ve `<Image>` de statik
+dışa aktarımda logoyu ön eksiz istedi — ikisi de yayında 404 verdi.
+`web/src/lib/base-path.ts` ön eki açıkça koyuyor.
+
+**Yayın sürümünde rapor yok.** Excel ve PDF gömülü yazı tiplerini ve logoyu
+diskten okuyor; tarayıcıda dosya sistemi yok. Çalışmayacak bir düğme göstermek
+yerine rapor alanı "motor sunucusuyla" diyor.
+
+Yerelde doğrulandı: statik çıktı `/AutomativeSimulation/` altında servis edildi,
+motor tarayıcıda kuruldu, saat ilerledi, andon çalıştı, 3D sahne yüklendi ve
+**hiçbir istek başarısız olmadı**.
+
 ### Sırada ne var
 
 Şartnamenin Faz 2'si: giriş kalite kontrol + insan silüetleri. Motor tarafı

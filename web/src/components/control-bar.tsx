@@ -7,6 +7,8 @@ import { useState } from "react";
 
 import { BRAND } from "@twin/brand";
 
+import { assetUrl } from "@/lib/base-path";
+
 import { ReportButtons } from "@/components/report-buttons";
 import { StatusPill } from "@/components/status-pill";
 import { Button } from "@/components/ui/button";
@@ -88,7 +90,7 @@ export function ControlBar({
             state.
           */}
           <Image
-            src="/brand/logo.webp"
+            src={assetUrl("/brand/logo.webp")}
             alt={BRAND.NAME}
             width={640}
             height={318}

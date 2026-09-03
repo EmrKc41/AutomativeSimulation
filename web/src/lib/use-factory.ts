@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { WS_URL } from "@/lib/api";
+import { IS_LOCAL_ENGINE, WS_URL } from "@/lib/api";
 import { FrameScheduler, browserClock } from "@/lib/frame-scheduler";
 import type { FactoryEvent, FactoryFrame } from "@/lib/contract";
 
@@ -149,7 +149,36 @@ export function useFactoryStream(): FactoryStream {
     [schedule],
   );
 
+  /*
+   * Motor tarayıcıda koşuyorsa soket yok: kareler doğrudan geliyor.
+   *
+   * Yayındaki sürümün sunucusu olmadığı için "bağlantı" diye bir şey de yok;
+   * akış her zaman canlı. Aynı `accept` yolundan geçiyor, yani çerçeve
+   * birleştirme, olay tamponu ve çizim zamanlaması uzak moddakiyle birebir
+   * aynı — iki ayrı veri yolu yazmak, ikisinin sessizce ayrışması demekti.
+   */
   useEffect(() => {
+    if (!IS_LOCAL_ENGINE) return;
+    let disposed = false;
+
+    let cikis = () => {};
+    void import("@/lib/local-engine").then((motor) => {
+      if (disposed) return;
+      accept(motor.localFrame(true), true);
+      setConnection("live");
+      cikis = motor.localSubscribe((frame) => {
+        if (!disposed) accept(frame, false);
+      });
+    });
+
+    return () => {
+      disposed = true;
+      cikis();
+    };
+  }, [accept]);
+
+  useEffect(() => {
+    if (IS_LOCAL_ENGINE) return;
     let disposed = false;
     // Whether *this* socket ever reached the engine, which decides how long to
     // wait before the next try. `attempt` only ever grows, so without this a
