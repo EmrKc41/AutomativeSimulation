@@ -25,6 +25,7 @@ import {
   aisleZ,
   cameraFarPlane,
   carrierRoutes,
+  finishedGatePlacement,
   forkliftRoute,
   maxCameraDistance,
   truckRoute,
@@ -48,7 +49,7 @@ import { MACHINE_STATE, TONE } from "@/lib/status";
  * it never invents a state the factory did not report.
  */
 
-const FLOOR = "#171426";
+const FLOOR = "#1b1f26";
 
 export interface FactorySceneProps {
   readonly frame: FactoryFrame;
@@ -76,7 +77,7 @@ export function FactoryScene(props: FactorySceneProps) {
       // bantlanmasında payı olan ikinci sebep buydu.
       near: 0.5, far: cameraFarPlane(props.config) }}
       // A dark hall: the scene must sit on the same ground as the rest of the UI.
-      onCreated={({ gl }) => gl.setClearColor("#14121f")}
+      onCreated={({ gl }) => gl.setClearColor("#12151a")}
     >
       <SceneDepth config={props.config} />
       <ambientLight intensity={0.42} />
@@ -110,6 +111,7 @@ export function FactoryScene(props: FactorySceneProps) {
 
       <Ground />
       <Zones config={props.config} showLabels={props.showLabels} />
+      <FinishedGates config={props.config} />
       <TruckRoad config={props.config} />
       <TugRoutes config={props.config} />
       <Conveyor config={props.config} />
@@ -368,6 +370,29 @@ function Yol({
       })}
     </group>
   );
+}
+
+/**
+ * Bitmiş ürün kapıları: her hattın salon çıkışı.
+ *
+ * Girişte kapı vardı, çıkışta yoktu — kalite kapısını geçen araç salonun
+ * duvarı hiç yokmuş gibi doğrudan park alanında beliriyordu.
+ */
+function FinishedGates({ config }: { config: FactoryDescriptor }) {
+  return (
+    <Suspense fallback={null}>
+      <group>
+        {config.lines.map((line) => (
+          <FinishedGate key={line.id} position={finishedGatePlacement(config, line.id)} />
+        ))}
+      </group>
+    </Suspense>
+  );
+}
+
+function FinishedGate({ position }: { position: readonly [number, number, number] }) {
+  const model = useModel(MODEL.productionGate);
+  return <primitive object={model} position={[position[0], 0, position[2]]} scale={ASSET_SCALE} />;
 }
 
 function TruckRoad({ config }: { config: FactoryDescriptor }) {
@@ -949,7 +974,7 @@ function SceneDepth({ config }: { config: FactoryDescriptor }) {
   const aspect = useThree((state) => state.size.width / state.size.height);
   const { fogNear, fogFar } = useMemo(() => sceneDepth(config, aspect), [config, aspect]);
 
-  return <fog attach="fog" args={["#14121f", fogNear, fogFar]} />;
+  return <fog attach="fog" args={["#12151a", fogNear, fogFar]} />;
 }
 
 function BookmarkCamera({

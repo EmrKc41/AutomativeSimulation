@@ -39,7 +39,11 @@ export function LineFlow({
   // hücresini ve kendi modelini gösteriyor. Tek blok hâlinde birleştirmek,
   // farklı modelleri aynı hatta üretiliyormuş gibi gösterirdi.
   return (
-    <div className="grid gap-2">
+    // `min-w-0`: grid ve flex çocukları varsayılan olarak `min-width: auto`
+    // taşır, yani içeriğe göre uzarlar — kaydırmazlar. Hat akışı şeridi bu
+    // yüzden telefonda kaydırılabilir olmak yerine bütün sayfayı 1030 piksele
+    // itiyordu.
+    <div className="grid min-w-0 gap-2">
       {config.lines.map((line) => (
         <LineRow
           key={line.id}
@@ -80,12 +84,15 @@ function LineRow({
   const reworkStation = stationById.get(line.reworkStationId);
 
   return (
-    <section aria-label={`Üretim hattı ${line.id}`} className="bg-card rounded-lg border p-3">
-      <div className="mb-2 flex items-baseline justify-between gap-2">
-        <h2 className="font-heading text-xs font-semibold tracking-widest uppercase">
+    <section
+      aria-label={`Üretim hattı ${line.id}`}
+      className="bg-card min-w-0 rounded-lg border p-3"
+    >
+      <div className="mb-2 flex min-w-0 flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5">
+        <h2 className="font-heading text-xs font-semibold tracking-widest whitespace-nowrap uppercase">
           Hat Akışı — {line.id}
         </h2>
-        <p className="text-muted-foreground text-[11px]">
+        <p className="text-muted-foreground min-w-0 text-[11px]">
           {/* Modelin adı başlıkta: üç hat aynı görünüyor, üzerlerinden geçen
               araç farklı. */}
           <span className="text-foreground font-medium">{line.model}</span> · hat tavanı{" "}
@@ -128,7 +135,9 @@ function LineRow({
       </div>
 
       {rework && reworkStation ? (
-        <div className="mt-2 flex items-center gap-2 border-t pt-2">
+        // Telefonda alt alta: tamir hücresi ile açıklama yan yana sığmıyor ve
+        // metin harf harf kırılıyordu.
+        <div className="mt-2 flex flex-wrap items-center gap-2 border-t pt-2">
           <CornerDownRight aria-hidden className="text-muted-foreground size-4 shrink-0" />
           <span className="text-muted-foreground text-[10px] tracking-widest uppercase">
             Tamir Hattı
@@ -147,7 +156,7 @@ function LineRow({
             onSelect={() => onSelectStation(rework.id)}
             onSelectProduct={onSelectProduct}
           />
-          <p className="text-muted-foreground ml-2 text-[11px]">
+          <p className="text-muted-foreground w-full text-[11px] sm:ml-2 sm:w-auto sm:flex-1">
             Araç, kendisini reddeden istasyona geri döner; {maxReworkPasses} turdan sonra hurdaya
             ayrılır.
           </p>

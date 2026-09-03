@@ -20,6 +20,7 @@ import {
   agvWorld,
   aisleZ,
   carrierRouteOf,
+  finishedGatePlacement,
   finishedGoodsOf,
   linePlanY,
   carrierRoutes,
@@ -1251,6 +1252,31 @@ describe("yerleşim revizyonu: bağımsız alanlar, düz tırlar, tanımlı güz
     // Ve sayaç hat başına: üçüncü hattın ilk aracı birincinin arkasına
     // dizilmiyor, kendi alanının başında duruyor.
     expect(birinci.position[0]).toBeCloseTo(ucuncu.position[0], 6);
+  });
+
+  /**
+   * Salonun çıkışı da her hatta ayrı olmalı.
+   *
+   * Girişte kapı vardı, çıkışta yoktu: kalite kapısını geçen araç salonun
+   * duvarı hiç yokmuş gibi doğrudan bitmiş ürün alanında beliriyordu.
+   */
+  test("every line has its own finished-goods gate, before its parking area", () => {
+    const kapilar = config.lines.map((line) => finishedGatePlacement(config, line.id));
+
+    // Üç ayrı kapı, üçü de kendi hattının hizasında.
+    expect(new Set(kapilar.map((kapi) => kapi[2])).size).toBe(config.lines.length);
+
+    for (const [index, line] of config.lines.entries()) {
+      const kapi = kapilar[index]!;
+      const alan = finishedGoodsOf(config, line.id);
+      const sonIstasyon = stationWorld(config, line.route.at(-1)!);
+
+      expect(kapi[2]).toBeCloseTo(alan[2], 6);
+      // Kapı son kalite ile park alanının arasında: araç kapıdan geçip park
+      // ediyor, ters sırada değil.
+      expect(kapi[0]).toBeGreaterThan(sonIstasyon[0]);
+      expect(kapi[0]).toBeLessThan(alan[0]);
+    }
   });
 
   test("each line loads in its own lane", () => {

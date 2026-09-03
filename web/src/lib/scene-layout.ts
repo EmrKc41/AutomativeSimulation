@@ -1143,6 +1143,23 @@ export function productionGatePlacement(config: FactoryDescriptor): World {
   return toWorld(x, y);
 }
 
+/**
+ * Bitmiş ürünün salondan çıktığı kapı — **her hatta bir tane**.
+ *
+ * Girişte kapı vardı, çıkışta yoktu: kalite kapısını geçen araç, salonun
+ * duvarı hiç yokmuş gibi doğrudan bitmiş ürün alanında beliriyordu. Malın
+ * içeri nereden girdiğini göstermek ne kadar gerekliyse, aracın dışarı
+ * nereden çıktığını göstermek de o kadar gerekli.
+ *
+ * Kapı hattın kendi hizasında ve bitmiş ürün alanının hemen batısında: araç
+ * son kalite kapısından çıkıp buradan geçiyor, sonra kendi park alanına
+ * giriyor.
+ */
+export function finishedGatePlacement(config: FactoryDescriptor, lineId: string): World {
+  const [alanX, , z] = finishedGoodsOf(config, lineId);
+  return [alanX - 10 * SCALE, 0, z];
+}
+
 /** Sevkiyat binasının yeri. */
 export function shippingBuildingPlacement(config: FactoryDescriptor): World {
   const [x, y] = planPosition(config, "SHIPPING-YARD");

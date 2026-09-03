@@ -16,6 +16,19 @@
  * The room is dark on purpose: this screen is read for hours on a wall display,
  * next to no other light source. There is no light variant to switch to, so the
  * dark values live on :root and are mirrored under .dark for shadcn primitives.
+ *
+ * **Kroma markadan bağımsız.** Bir dönem yüzeyler logonun moruna (hue 283,
+ * kroma 0,03–0,04) hizalanmıştı. Bir komuta ekranında marka rengi yüzeye
+ * yayıldığında iki şey oluyor: ekran bir ürün sayfasına benziyor, ve daha
+ * kötüsü, mor tonu "önü tıkalı" durum rengiyle aynı aileye giriyor. Yüzeyler
+ * artık grafit — hue 250, kroma 0,009–0,014; yani makine boyası, marka değil.
+ *
+ * **Aydınlık değerlerine dokunulmadı.** Kontrast oranı ağırlıkla L'den gelir;
+ * yalnızca ton ve doygunluk değiştiği için metin okunabilirliği aynı kaldı.
+ *
+ * **Durum renkleri değişmedi.** Yeşil/sarı/turuncu/kırmızı/mavi operasyonel
+ * anlam taşıyor; tema onları seyreltmez. Ekrandaki tek renk kaynağı onlar
+ * olsun diye yüzeyler bilerek renksiz.
  */
 
 @theme inline {
@@ -85,23 +98,23 @@
   --space-3xl: 2rem;
   --radius: 0.375rem;
 
-  --background: oklch(0.2035 0.0286 282.5); /* logonun lacivertine hizalandi */
+  --background: oklch(0.2035 0.0090 250);   /* grafit: makine boyası, marka değil */
   --foreground: oklch(0.9842 0.0034 247.86); /* #F8FAFC */
-  --card: oklch(0.2380 0.0330 283.5); /* logo moruna dogru bir tik */
+  --card: oklch(0.2380 0.0105 250);
   --card-foreground: oklch(0.9842 0.0034 247.86);
-  --popover: oklch(0.2640 0.0355 284.0);
+  --popover: oklch(0.2640 0.0110 250);
   --popover-foreground: oklch(0.9842 0.0034 247.86);
   --primary: oklch(0.7227 0.192 149.58); /* #22C55E */
   --primary-foreground: oklch(0.1726 0.0316 155.98);
-  --secondary: oklch(0.2860 0.0360 283.0);
+  --secondary: oklch(0.2860 0.0115 250);
   --secondary-foreground: oklch(0.9288 0.0126 255.51);
-  --muted: oklch(0.2640 0.0355 284.0);
-  --muted-foreground: oklch(0.7220 0.0300 285.0); /* arka planda 6.1:1 */
-  --accent: oklch(0.3790 0.0370 284.0);
+  --muted: oklch(0.2640 0.0110 250);
+  --muted-foreground: oklch(0.7220 0.0110 250); /* aydınlık aynı, kontrast korunuyor */
+  --accent: oklch(0.3790 0.0130 250);
   --accent-foreground: oklch(0.9842 0.0034 247.86);
   --destructive: oklch(0.6368 0.2078 25.33); /* #EF4444 */
-  --border: oklch(0.3270 0.0420 284.5);
-  --input: oklch(0.3790 0.0370 284.0);
+  --border: oklch(0.3270 0.0140 250);
+  --input: oklch(0.3790 0.0130 250);
   --ring: oklch(0.7227 0.192 149.58);
 
   --status-ok: oklch(0.7227 0.192 149.58); /* normal production */
@@ -109,7 +122,7 @@
   --status-risk: oklch(0.7049 0.1867 47.6); /* quality / operational risk */
   --status-critical: oklch(0.6368 0.2078 25.33); /* critical problem */
   --status-logistics: oklch(0.6231 0.188 259.81); /* material movement */
-  --status-idle: oklch(0.5610 0.0380 284.0); /* no demand on the resource */
+  --status-idle: oklch(0.5610 0.0150 250); /* no demand on the resource */
   --status-blocked: oklch(0.6268 0.2325 303.9); /* downstream constraint */
 
   --chart-1: oklch(0.7227 0.192 149.58);
@@ -118,16 +131,16 @@
   --chart-4: oklch(0.7049 0.1867 47.6);
   --chart-5: oklch(0.6268 0.2325 303.9);
 
-  --surface-raised: oklch(0.2640 0.0355 284.0);
-  --grid-line: oklch(0.2860 0.0360 283.0);
+  --surface-raised: oklch(0.2640 0.0110 250);
+  --grid-line: oklch(0.2860 0.0115 250);
 
-  --sidebar: oklch(0.2380 0.0330 283.5);
+  --sidebar: oklch(0.2380 0.0105 250);
   --sidebar-foreground: oklch(0.9842 0.0034 247.86);
   --sidebar-primary: oklch(0.7227 0.192 149.58);
   --sidebar-primary-foreground: oklch(0.1726 0.0316 155.98);
-  --sidebar-accent: oklch(0.2860 0.0360 283.0);
+  --sidebar-accent: oklch(0.2860 0.0115 250);
   --sidebar-accent-foreground: oklch(0.9842 0.0034 247.86);
-  --sidebar-border: oklch(0.3270 0.0420 284.5);
+  --sidebar-border: oklch(0.3270 0.0140 250);
   --sidebar-ring: oklch(0.7227 0.192 149.58);
 }
 
