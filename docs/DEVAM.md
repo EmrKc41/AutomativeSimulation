@@ -50,7 +50,7 @@ npx tsc --noEmit && npx eslint . && npx prettier --check . && npm test
 cd web && npx tsc --noEmit && npx eslint . && npm test && npm run build
 ```
 
-Beklenen: motorda **169 test**, web tarafında **67 test**, hepsi geçer.
+Beklenen: motorda **171 test**, web tarafında **67 test**, hepsi geçer.
 
 Tesiste artık **üç üretim hattı** var (LINE-01 Meltem, LINE-02 Poyraz,
 LINE-03 Lodos); 18 istasyon, 9 doli.
@@ -849,6 +849,19 @@ desen her karede aynı yerde durduğu için kare hızıyla ilgisi yok.
 3. Izgara aralığı tesisin boyuna göre seyreltildi (5 m → 20 m hücre). 5
    metrelik hücreler kısa bir tesiste okunaklıydı; 300 metrelik sahada kamera
    geriye çekilince çizgiler ekranda birkaç piksele düşüp moiré üretiyordu.
+
+### İstasyon adı ile kimliği artık uyuşuyor
+
+Çalıştırıp bakarken çıktı: panoda "Gövde Kaynak 01" görünüyor, kimliği ise
+`WELD-04` idi. Üç hattı şablondan üretirken addaki numarayı **hat** numarasından
+yazmışım; oysa kaynak hücreleri tesis genelinde numaralı (04/05/06), presler hat
+bazında (01/02/03). Aynı istasyonu iki farklı numarayla anan bir pano, sahada
+telsizle konuşan iki kişiyi karşı karşıya getirir.
+
+Ad artık **kimliğin** numarasını taşıyor. Kimliğinde numara olmayan istasyon
+(`FINAL-QC`) adında da numarasız; diğer hatlarınki `FINAL-QC-02` olduğu için
+karışma yok. İki test bunu koruyor (ad/kimlik uyuşması ve adların benzersizliği);
+eski davranış geri konduğunda birincisi düşüyor.
 
 ### Sırada ne var
 

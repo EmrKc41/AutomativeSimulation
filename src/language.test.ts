@@ -11,6 +11,7 @@ import {
   SEVERITY_TEXT,
   SHIPMENT_STATUS_TEXT,
 } from "./labels.ts";
+import { factoryConfig } from "./factory.ts";
 import { scenarioKinds } from "./scenarios.ts";
 import { runScenario } from "./simulation.ts";
 
@@ -150,4 +151,34 @@ test("every payload key the engine emits has a Turkish word for it", () => {
   // meeting: "plannedDeparture=56" means nothing to the people reading it.
   const missing = [...keys].filter((key) => !(key in PAYLOAD_TEXT)).sort();
   assert.deepEqual(missing, [], `sözlükte karşılığı olmayan alan: ${missing.join(", ")}`);
+});
+
+/**
+ * Ekrandaki ad ile kimlik aynı istasyonu anlatmalı.
+ *
+ * Üç hat şablondan üretiliyor ve adın numarası bir dönem **hat** numarasından
+ * yazılıyordu: panoda "Gövde Kaynak 01" görünüyor, kimliği `WELD-04` oluyordu.
+ * Aynı istasyonu iki farklı numarayla anan bir pano, sahada telsizle konuşan
+ * iki kişiyi karşı karşıya getirir.
+ */
+test("a station's name and its id never disagree about the number", () => {
+  for (const station of factoryConfig.stations) {
+    const kimlikNo = /(\d+)$/.exec(station.id)?.[1];
+    const adNo = /(\d+)$/.exec(station.name)?.[1];
+
+    assert.equal(
+      adNo,
+      kimlikNo,
+      `${station.id} istasyonu ekranda "${station.name}" diye görünüyor`,
+    );
+  }
+});
+
+test("no two stations share a display name", () => {
+  const adlar = factoryConfig.stations.map((station) => station.name);
+  assert.equal(
+    new Set(adlar).size,
+    adlar.length,
+    `aynı adı taşıyan istasyonlar var: ${adlar.join(", ")}`,
+  );
 });

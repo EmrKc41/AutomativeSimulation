@@ -295,16 +295,29 @@ function hatIstasyonlari(hat: HatTanimi): StationConfig[] {
   return HAT_1_ISTASYONLARI.map((sablon, index) => {
     const id = hat.istasyonlar[index];
     if (!id) throw new Error(`${hat.id}: ${sablon.id} için istasyon kimliği tanımlanmamış`);
-    // Ad hattı söylemeli: ekranda "Pres Hattı 02" ile "Pres Hattı 01"
-    // karışmasın. Sonunda numara olmayan istasyona ("Son Kalite Kontrol")
-    // numara ekleniyor — yoksa üç hatta üç ayrı istasyon aynı adı taşırdı.
-    const hatNo = hat.id.slice(-2);
+    // Addaki numara **kimliğin** numarası, hattın değil.
+    //
+    // Önce hat numarası yazılıyordu ve ekranda "Gövde Kaynak 01" görünürken
+    // kimliği `WELD-04` oluyordu: aynı istasyonu iki farklı numarayla anan bir
+    // pano, sahada telsizle konuşan iki kişiyi karşı karşıya getirir. Kaynak
+    // hücreleri tesis genelinde numaralı (04/05/06), presler hat bazında
+    // (01/02/03); ad hangisiyse onu söylüyor.
+    //
+    // Kimliğinde numara olmayan istasyon ("FINAL-QC") adında da numarasız
+    // kalıyor; diğer hatlarınki `FINAL-QC-02` olduğu için karışma olmuyor.
+    const kimlikNo = /(\d+)$/.exec(id)?.[1];
     const numarali = /\d+$/.test(sablon.name);
 
     return {
       ...sablon,
       id,
-      name: numarali ? sablon.name.replace(/\d+$/, hatNo) : `${sablon.name} ${hatNo}`,
+      name: numarali
+        ? kimlikNo
+          ? sablon.name.replace(/\d+$/, kimlikNo)
+          : sablon.name.replace(/\s*\d+$/, "")
+        : kimlikNo
+          ? `${sablon.name} ${kimlikNo}`
+          : sablon.name,
       lineId: hat.id,
       // X şablondan (rota boyunca sıra), Y hattan.
       position: [sablon.position[0], sablon.position[1] + hat.planY] as [number, number],
